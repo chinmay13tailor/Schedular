@@ -37,10 +37,12 @@
   .status-pending_approval{background:var(--amber)}
   .sub{display:block;font-weight:600;opacity:.95}
   .tiny{display:block;font-weight:600;opacity:.8;font-size:12px}
-  .badge{display:inline-block;border-radius:999px;padding:3px 8px;font-size:12px;color:#fff}
+  .badge{display:inline-block;border-radius:999px;padding:3px 8px;font-size:11px;color:#fff;margin-left:6px}
   .b-planned{background:var(--blue)} .b-live{background:var(--green)}
   .b-completed{background:var(--cyan)} .b-cancelled{background:var(--red)}
   .b-pending_approval{background:var(--amber)}
+  .b-saved{background:var(--green)} .b-pending{background:var(--amber)}
+
   .muted{color:var(--muted)} #loading{font-size:12px;color:#64748b;margin-left:8px}
   .success{color:#16a34a}.err{color:#dc2626;font-weight:700}
 
@@ -59,7 +61,7 @@
 <div class="app">
   <header>
     <div class="brand">PlantWiz • Training Calendar</div>
-    <span id="mode" class="muted">Write → <code>SERVER_SCOPE:Training_Write</code> (Rule chain will mirror to telemetry)</span>
+    <span class="muted">Write → <code>SERVER_SCOPE: Training_Write</code> + <code>Save_Button=false</code> (Rule chain mirrors to telemetry)</span>
     <div class="spacer"></div>
     <span id="loading"></span>
   </header>
@@ -72,8 +74,9 @@
   </aside>
 
   <footer>
-    UI writes to <code>SERVER attributes / Training_Write</code>. Your rule chain converts it to a single telemetry row at <code>ts = Training_Start</code> (keys:
-    Training_Title, Training_Operator_Name, Training_Start, Training_End, Trainer_Name, Training_Topic, Training_Machine, Training_Status).
+    UI writes attributes <code>Training_Write</code> (JSON) and <code>Save_Button=false</code>.  
+    Rule chain should write one telemetry row at <code>ts=Training_Start</code> with all fields **and** <code>Save_Button=true</code>.  
+    Calendar reads telemetry and shows <em>Saved</em>/<em>Pending</em>.
   </footer>
 </div>
 
@@ -129,11 +132,14 @@ var API_BASE  = ORIGIN + "/api";
 var DEVICE_ID = "991cf500-661a-11f0-90f1-775fee303094";
 var JWT       = new URLSearchParams(location.search).get("token")  || "";
 
-var ATTR_WRITE_KEY = "Training_Write"; // single attribute used as write buffer
+var ATTR_WRITE_KEY = "Training_Write";   // attribute buffer
+var ATTR_SAVE_FLAG = "Save_Button";      // attribute save flag
 
+// Telemetry keys to read (add Save_Button so UI can show Saved/Pending)
 var KEYS = [
   "Training_Title","Training_Operator_Name","Training_Start","Training_End",
-  "Trainer_Name","Training_Topic","Training_Machine","Training_Status"
+  "Trainer_Name","Training_Topic","Training_Machine","Training_Status",
+  "Save_Button"
 ];
 
 /************ HELPERS ************/
@@ -160,6 +166,10 @@ function colorByStatus(s){
   if (s==="pending_approval") return "status-pending_approval";
   return "status-planned";
 }
+function badgeSaved(p){
+  var saved = String(p.Save_Button).toLowerCase() === "true" || p.Save_Button === true;
+  return saved ? '<span class="badge b-saved">Saved</span>' : '<span class="badge b-pending">Pending</span>';
+}
 function eventContent(arg){
   var p = arg.event.extendedProps;
   var time = arg.timeText || "";
@@ -167,7 +177,7 @@ function eventContent(arg){
   var trainer = p.Trainer_Name ? (" – " + escapeHtml(p.Trainer_Name)) : "";
   var title = arg.event.title || "Training";
   return { html:
-    '<span class="sub">'+time+machine+'</span>'+
+    '<span class="sub">'+time+machine+badgeSaved(p)+'</span>'+
     '<span>'+escapeHtml(title)+trainer+'</span>'+
     '<span class="tiny">'+escapeHtml(p.Training_Operator_Name || "")+'</span>'
   };
@@ -218,6 +228,7 @@ function readRangeSessions(rangeStart, rangeEnd){
             Training_Topic: r.Training_Topic || "",
             Training_Machine: r.Training_Machine || "",
             Training_Status: r.Training_Status || "planned",
+            Save_Button: r.Save_Button,                // "true"/"false" or boolean
             __ts: r.ts
           }
         });
@@ -227,11 +238,13 @@ function readRangeSessions(rangeStart, rangeEnd){
     });
 }
 
-/************ WRITE (attribute buffer) ************/
+/************ WRITE (attributes buffer + flag=false) ************/
 function writeAttributeBuffer(session){
   if(!JWT) return Promise.reject(new Error("Missing JWT (?token=)"));
   var url = API_BASE + "/plugins/telemetry/DEVICE/" + DEVICE_ID + "/SERVER_SCOPE";
-  var payload = {}; payload[ATTR_WRITE_KEY] = JSON.stringify(session);
+  var payload = {};
+  payload[ATTR_WRITE_KEY] = JSON.stringify(session); // training payload
+  payload[ATTR_SAVE_FLAG] = false;                   // flag = false on save click
   return fetch(url, {
     method: "POST",
     headers: { "X-Authorization": "Bearer " + JWT, "Content-Type": "application/json" },
@@ -246,10 +259,12 @@ function showDetails(ev){
   var p = ev.extendedProps;
   function fmt(v){ return v ? new Date(Number(v)).toLocaleString() : "-"; }
   var badge = "badge b-" + String(p.Training_Status || "planned").replace(" ","_");
+  var saved = (String(p.Save_Button).toLowerCase()==="true" || p.Save_Button===true) ? 
+              '<span class="badge b-saved">Saved</span>' : '<span class="badge b-pending">Pending</span>';
   $("#details").className = "";
   $("#details").innerHTML =
     '<div class="kpi">'+
-      '<span>Base ts</span><span>'+escapeHtml(String(p.__ts||"-"))+'</span>'+
+      '<span>Base ts</span><span>'+escapeHtml(String(p.__ts||"-"))+' '+saved+'</span>'+
       '<span>Status</span><span><span class="'+badge+'">'+escapeHtml(p.Training_Status||"planned")+'</span></span>'+
       '<span>Title</span><span>'+escapeHtml(p.Training_Title||"-")+'</span>'+
       '<span>Topic</span><span>'+escapeHtml(p.Training_Topic||"-")+'</span>'+
@@ -270,7 +285,8 @@ function openModalForDate(jsDate){
   state.clickedDate = new Date(jsDate.getFullYear(), jsDate.getMonth(), jsDate.getDate());
   $("#fDateHint").textContent = "Date: " + state.clickedDate.toDateString();
   $("#fTitle").value=""; $("#fOperator").value=""; $("#fTrainer").value="";
-  $("#fTopic").value=""; $("#fMachine").value=""; $("#fTimeTo").value="09:00"; $("#fTimeFrom").value="11:00";
+  $("#fTopic").value=""; $("#fMachine").value="";
+  $("#fTimeTo").value="09:00"; $("#fTimeFrom").value="11:00";
   overlay.style.display = "flex";
 }
 
@@ -296,11 +312,11 @@ function onSaveSession(){
   for (var i=0;i<must.length;i++){ if(!must[i][1]){ alert("Please enter "+must[i][0]); return; } }
   if (payload.Training_End <= payload.Training_Start){ alert("Time From must be after Time To."); return; }
 
-  loading("Sending to rule chain…");
+  loading("Sending attributes…");
   writeAttributeBuffer(payload)
     .then(function(){
       overlay.style.display = "none";
-      // give the rule chain a moment to mirror to telemetry, then refresh
+      // Wait a moment for the rule chain to insert telemetry (and set Save_Button=true), then refresh.
       setTimeout(function(){
         if (state.lastRange){
           loading("Refreshing…");
