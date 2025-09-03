@@ -48,7 +48,7 @@
   .b-pending_approval{background:var(--amber)}
   .b-saved{background:#16a34a} .b-pending{background:var(--amber)}
 
-  .muted{color:var(--muted)} #loading{font-size:12px;color:#64748b;margin-left:8px}
+  .muted{color:#64748b} #loading{font-size:12px;color:#64748b;margin-left:8px}
   .success{color:#16a34a}.err{color:#dc2626;font-weight:700}
 
   .overlay{position:fixed;inset:0;background:rgba(15,23,42,.35);display:none;align-items:center;justify-content:center;z-index:50}
@@ -64,7 +64,7 @@
 <div class="app">
   <header>
     <div class="brand">PlantWiz • Training Calendar</div>
-    <span class="muted">Create → <code>Save_Button=false</code>. Update/Cancel → <code>Update_Buttton=true</code> (no Save_Button).</span>
+    <span class="muted">Create → <code>Save_Button=false</code>. Update/Cancel → <code>Update_Buttton=true</code> + <code>Update_Timestamp=base ts</code>.</span>
     <div class="spacer"></div>
     <span id="loading"></span>
   </header>
@@ -81,7 +81,7 @@
   </aside>
 
   <footer>
-    Calendar reads telemetry; rule-chain mirrors attributes to telemetry, then (optionally) flips flags.
+    Calendar reads telemetry; rule-chain mirrors attributes to telemetry & can rewrite rows using <code>Update_Timestamp</code>.
   </footer>
 </div>
 
@@ -138,8 +138,8 @@ var DEVICE_ID = "991cf500-661a-11f0-90f1-775fee303094";
 var JWT       = new URLSearchParams(location.search).get("token")  || "";
 
 // Flags
-var ATTR_SAVE_FLAG    = "Save_Button";       // used only for CREATE
-var ATTR_UPDATE_FLAG  = "Update_Buttton";    // used for UPDATE & CANCEL (spelling as requested)
+var ATTR_SAVE_FLAG    = "Save_Button";       // only on CREATE
+var ATTR_UPDATE_FLAG  = "Update_Buttton";    // exact spelling, on UPDATE/CANCEL
 
 // Telemetry keys we read to render
 var KEYS = [
@@ -247,7 +247,7 @@ function readRangeSessions(rangeStart, rangeEnd){
 /************ WRITE (attributes) ************/
 // opts.mode: "create" | "update" | "cancel"
 // - create: adds Save_Button=false
-// - update & cancel: adds Update_Buttton=true (NO Save_Button)
+// - update & cancel: adds Update_Buttton=true + Update_Timestamp (base ts)
 function writeAttributes(session, opts){
   if(!JWT) return Promise.reject(new Error("Missing JWT (?token=)"));
   var url = API_BASE + "/plugins/telemetry/DEVICE/" + DEVICE_ID + "/SERVER_SCOPE";
@@ -264,9 +264,12 @@ function writeAttributes(session, opts){
   };
 
   if (opts && opts.mode === "create") {
-    body[ATTR_SAVE_FLAG] = false; // only for create
+    body[ATTR_SAVE_FLAG] = false;
   } else if (opts && (opts.mode === "update" || opts.mode === "cancel")) {
-    body[ATTR_UPDATE_FLAG] = true; // exact spelling
+    body[ATTR_UPDATE_FLAG] = true;
+    if (session.Update_Timestamp) {
+      body.Update_Timestamp = session.Update_Timestamp; // pass base ts to rule chain
+    }
   }
 
   return fetch(url, {
@@ -345,11 +348,11 @@ $("#btnCancel").addEventListener("click", function(){
     Trainer_Name: p.Trainer_Name || "",
     Training_Topic: p.Training_Topic || "",
     Training_Machine: p.Training_Machine || "",
-    Training_Status: "cancelled"
+    Training_Status: "cancelled",
+    Update_Timestamp: p.__ts              // include base ts for rule chain
   };
 
   loading("Cancelling…");
-  // CANCEL → send 8 attrs + Update_Buttton=true (NO Save_Button)
   writeAttributes(payload, { mode: "cancel" })
     .then(afterWriteRefresh)
     .catch(err => { console.error(err); alert(err.message||"Failed to cancel"); loading(""); });
@@ -373,7 +376,6 @@ function onCreateSession(){
   var must = requiredChecks(payload);
   if (must) { alert(must); return; }
   loading("Saving…");
-  // CREATE → 8 attrs + Save_Button=false
   writeAttributes(payload, { mode:"create" })
     .then(function(){ overlay.style.display="none"; afterWriteRefresh(); })
     .catch(function(e){ console.error(e); alert(e.message||"Failed to save"); loading(""); });
@@ -382,10 +384,14 @@ function onCreateSession(){
 function onUpdateSession(){
   var base = state.clickedDate || new Date();
   var payload = collectFormPayload(base);
+  // include base ts for rule-chain to target the right telemetry row
+  if (state.selectedEvent && state.selectedEvent.extendedProps.__ts) {
+    payload.Update_Timestamp = state.selectedEvent.extendedProps.__ts;
+  }
+
   var must = requiredChecks(payload);
   if (must) { alert(must); return; }
   loading("Updating…");
-  // UPDATE → 8 attrs + Update_Buttton=true (NO Save_Button)
   writeAttributes(payload, { mode:"update" })
     .then(function(){ overlay.style.display="none"; afterWriteRefresh(); })
     .catch(function(e){ console.error(e); alert(e.message||"Failed to update"); loading(""); });
