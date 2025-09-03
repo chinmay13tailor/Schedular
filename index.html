@@ -5,9 +5,10 @@
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
 <title>PlantWiz • Training Calendar</title>
 
-<!-- FullCalendar -->
-<link href="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.15/index.global.min.css" rel="stylesheet">
-<script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.15/index.global.min.js"></script>
+<!-- FullCalendar (primary CDN) -->
+<link id="fc-css" rel="stylesheet"
+      href="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.11/index.global.min.css">
+<script id="fc-js" src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.11/index.global.min.js"></script>
 
 <style>
   :root{
@@ -23,6 +24,7 @@
   .btn,.input,select{border:1px solid var(--ring);border-radius:10px;background:#fff;padding:8px 10px}
   .btn{cursor:pointer;font-weight:800}
   .card{border:1px solid var(--ring);border-radius:12px;background:#fff;overflow:hidden}
+  #calendar{min-height:560px;} /* ensure visible space even before render */
   .side{border:1px solid var(--ring);border-radius:12px;background:#fff;padding:14px;position:sticky;top:16px;height:fit-content}
   .empty{padding:12px;text-align:center;color:#64748b;background:#f8fafc;border-radius:10px}
   .h6{margin:0 0 10px;font-weight:900}
@@ -64,6 +66,7 @@
   .modal footer{display:flex;gap:10px;justify-content:flex-end;border-top:1px solid var(--ring);padding:10px 14px;border-radius:0 0 14px 14px}
   .danger{background:#fff;border:1px solid var(--red);color:#dc2626}
   .primary{background:linear-gradient(#3b82f6,#2563eb);color:#fff;border:0}
+  .err{color:#dc2626;font-weight:700}
 </style>
 </head>
 <body>
@@ -71,7 +74,6 @@
   <header>
     <div class="brand">PlantWiz • Training Calendar</div>
     <div class="spacer"></div>
-    <button id="btnToday" class="btn">Today</button>
     <span id="loading"></span>
   </header>
 
@@ -84,7 +86,7 @@
 
   <footer>
     Stored under SERVER attributes as <code>TrainCal_YYYY-MM-DD</code> (JSON array).
-    Keys per session: Training_Title, Training_Operator_Name, Training_Start, Training_End, Trainer_Name, Training_Topic, Training_Machine, Training_Status
+    Keys: Training_Title, Training_Operator_Name, Training_Start, Training_End, Trainer_Name, Training_Topic, Training_Machine, Training_Status
   </footer>
 </div>
 
@@ -134,19 +136,51 @@
 
 <script>
 /* =======================
+   Robust FullCalendar loader (fallback to unpkg if needed)
+   ======================= */
+async function ensureFullCalendar(){
+  if (window.FullCalendar) return;
+  // if primary CDN failed, try unpkg
+  const cssOk = !!document.getElementById('fc-css');
+  const jsOk  = !!document.getElementById('fc-js');
+  if (!cssOk || !jsOk) {
+    // unlikely in static HTML, but continue
+  }
+  // inject fallback only if not available after a brief tick
+  await new Promise(r=>setTimeout(r, 150));
+  if (window.FullCalendar) return;
+  const fallbackCss = document.createElement('link');
+  fallbackCss.rel = 'stylesheet';
+  fallbackCss.href = 'https://unpkg.com/fullcalendar@6.1.11/index.global.min.css';
+  document.head.appendChild(fallbackCss);
+
+  const fallbackJs = document.createElement('script');
+  fallbackJs.src = 'https://unpkg.com/fullcalendar@6.1.11/index.global.min.js';
+  document.head.appendChild(fallbackJs);
+
+  // wait up to 5s
+  const start = performance.now();
+  while(!window.FullCalendar && performance.now()-start < 5000){
+    await new Promise(r=>setTimeout(r,100));
+  }
+  if (!window.FullCalendar){
+    throw new Error("Failed to load FullCalendar (both CDNs). Check network/CSP.");
+  }
+}
+
+/* =======================
    CONFIG
    ======================= */
 const ORIGIN    = "https://plantwiz.pimateck.in";
 const API_BASE  = `${ORIGIN}/api`;
 const DEVICE_ID = "991cf500-661a-11f0-90f1-775fee303094";
-const JWT       = new URLSearchParams(location.search).get("token") || ""; // injected by TB HTML widget
+const JWT       = new URLSearchParams(location.search).get("token") || ""; // injected by TB widget
 
 /* =======================
-   STATE / HELPERS
+   HELPERS & STATE
    ======================= */
 const $ = s => document.querySelector(s);
 const loading = (t)=> $("#loading").textContent = t || "";
-
 const state = { calendar: null, clickedDate: null, lastRange: null };
 
 function mergeDateTime(baseDate, hhmm){
@@ -182,9 +216,8 @@ function eventContent(arg){
 }
 
 /* =======================
-   READ / WRITE (SERVER attributes with JWT)
+   SERVER ATTRIBUTES (JWT)
    ======================= */
-// Read array for a single day → []
 async function readDaySessions(dateObj){
   if(!JWT) throw new Error("Missing JWT (?token=) in URL.");
   const key = dayKey(dateObj);
@@ -198,15 +231,12 @@ async function readDaySessions(dateObj){
   try { return v ? JSON.parse(v) : []; } catch { return []; }
 }
 
-// Append a session object to that day and write back
 async function saveDaySession(dateObj, sessionObj){
   const key = dayKey(dateObj);
   const existing = await readDaySessions(dateObj);
   existing.push(sessionObj);
-
   const writeUrl = `${API_BASE}/plugins/telemetry/DEVICE/${DEVICE_ID}/SERVER_SCOPE`;
   const payload  = { [key]: JSON.stringify(existing) };
-
   const res = await fetch(writeUrl, {
     method: "POST",
     headers: {
@@ -218,10 +248,8 @@ async function saveDaySession(dateObj, sessionObj){
   if (!res.ok){ const t=await res.text().catch(()=>res.statusText); throw new Error(`Write failed: ${t}`); }
 }
 
-// Read all days visible in the calendar (info.start inclusive, info.end exclusive)
 async function readRangeSessions(rangeStart, rangeEnd){
   if(!JWT) throw new Error("Missing JWT (?token=) in URL.");
-  // Build day keys
   const keys = [];
   const d = new Date(rangeStart);
   while (d < rangeEnd){
@@ -229,13 +257,10 @@ async function readRangeSessions(rangeStart, rangeEnd){
     d.setDate(d.getDate()+1);
   }
   if (!keys.length) return [];
-
   const url = `${API_BASE}/plugins/telemetry/DEVICE/${DEVICE_ID}/values/attributes/SERVER_SCOPE?keys=${encodeURIComponent(keys.join(','))}`;
   const res = await fetch(url, { headers: { "X-Authorization": `Bearer ${JWT}` } });
   if (!res.ok){ const t=await res.text().catch(()=>res.statusText); throw new Error(`Month read failed: ${t}`); }
   const json = await res.json();
-
-  // Flatten to event-ready objects
   const out = [];
   keys.forEach(k=>{
     const arr = json[k] || [];
@@ -334,6 +359,7 @@ async function onSaveSession(){
       const events = await readRangeSessions(state.lastRange.start, state.lastRange.end);
       state.calendar.removeAllEvents();
       state.calendar.addEventSource(events);
+      $("#details").className="empty"; $("#details").textContent="Select a session on the calendar";
       loading(`Loaded ${events.length} session(s)`);
     } else {
       loading("");
@@ -348,33 +374,43 @@ async function onSaveSession(){
 /* =======================
    BOOT
    ======================= */
-document.addEventListener("DOMContentLoaded", () => {
-  const calEl = $("#calendar");
-  state.calendar = new FullCalendar.Calendar(calEl, {
-    initialView: "dayGridMonth",
-    headerToolbar: { left: "prev,next", center: "title", right: "" }, /* no search / meet / new event */
-    height: "auto",
-    eventContent,
-    dateClick: (info)=> openModalForDate(info.date),
-    eventClick: (info)=> showDetails(info.event),
-    datesSet: async (info) => {
-      try{
-        loading("Loading…");
-        state.lastRange = { start: info.start, end: info.end }; // end is exclusive
-        const events = await readRangeSessions(info.start, info.end);
-        state.calendar.removeAllEvents();
-        state.calendar.addEventSource(events);
-        $("#details").className="empty"; $("#details").textContent="Select a session on the calendar";
-        loading(`Loaded ${events.length} session(s)`);
-      }catch(err){
-        console.error(err);
-        loading(err.message || "Failed to load");
-        state.calendar.removeAllEvents();
+document.addEventListener("DOMContentLoaded", async () => {
+  try{
+    loading("Loading calendar…");
+    await ensureFullCalendar(); // make sure library is available
+
+    const calEl = $("#calendar");
+    state.calendar = new FullCalendar.Calendar(calEl, {
+      initialView: "dayGridMonth",
+      headerToolbar: { left: "prev,next today", center: "title", right: "" },
+      height: "auto",
+      eventContent,
+      dateClick: (info)=> openModalForDate(info.date),
+      eventClick: (info)=> showDetails(info.event),
+      datesSet: async (info) => {
+        try{
+          loading("Loading…");
+          state.lastRange = { start: info.start, end: info.end }; // end exclusive
+          const events = await readRangeSessions(info.start, info.end);
+          state.calendar.removeAllEvents();
+          state.calendar.addEventSource(events);
+          $("#details").className="empty"; $("#details").textContent="Select a session on the calendar";
+          loading(`Loaded ${events.length} session(s)`);
+        }catch(err){
+          console.error(err);
+          loading(err.message || "Failed to load");
+          state.calendar.removeAllEvents();
+        }
       }
-    }
-  });
-  state.calendar.render();
-  $("#btnToday").addEventListener("click", ()=> state.calendar.today());
+    });
+    state.calendar.render();
+    loading(""); // clear
+  }catch(err){
+    console.error(err);
+    document.getElementById('calendar').innerHTML =
+      `<div class="empty"><span class="err">Calendar failed to load:</span> ${err.message}</div>`;
+    loading("");
+  }
 });
 </script>
 </body>
