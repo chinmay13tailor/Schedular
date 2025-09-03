@@ -34,7 +34,7 @@
     /* FullCalendar tweaks */
     .fc .fc-toolbar{padding:10px}
     .fc .fc-toolbar-title{font-size:16px;font-weight:800}
-    .fc .fc-button{background:#fff;border:1px solid var(--ring);color:var(--text);border-radius:10px;padding:6px 10px}
+    .fc .fc-button{background:#fff;border:1px solid var(--ring);color:#fff;border-radius:10px;padding:6px 10px;color:#0f172a}
     .fc-theme-standard td,.fc-theme-standard th{border-color:var(--ring)}
     .fc-daygrid-day-number{color:#64748b}
 
@@ -64,6 +64,9 @@
     .modal footer{display:flex;gap:10px;justify-content:flex-end;border-top:1px solid var(--ring);padding:10px 14px;border-radius:0 0 14px 14px}
     .danger{background:#fff;border:1px solid var(--red);color:#dc2626}
     .primary{background:linear-gradient(#3b82f6,#2563eb);color:#fff;border:0}
+    .debug{margin-top:14px;padding-top:12px;border-top:1px dashed var(--ring)}
+    .ok{color:#16a34a;font-weight:700}
+    .err{color:#dc2626;font-weight:700}
   </style>
 </head>
 <body>
@@ -87,6 +90,14 @@
   <aside class="side">
     <h3 class="h6">Session details</h3>
     <div id="details" class="empty">Select a session on the calendar</div>
+
+    <!-- Quick dump block -->
+    <div class="debug">
+      <h3 class="h6">Quick Dump: Training_Operator_Name</h3>
+      <input id="dumpInput" class="input" type="text" placeholder="Type operator name…"/>
+      <button id="dumpBtn" class="btn" style="margin-left:6px;">Dump</button>
+      <div id="dumpStatus" class="muted" style="margin-top:6px;"></div>
+    </div>
   </aside>
 
   <footer>Keys incl. creation mapping: Training_Title, Training_Operator_Name, Training_Start, Training_End, Trainer_Name, Training_Topic, Training_Machine, Training_Status</footer>
@@ -196,6 +207,72 @@ function eventContent(arg){
     <span>${escapeHtml(title)}${trainer}</span>
     <span class="tiny">${escapeHtml(p.Training_Operator_Name || "")}</span>
   `};
+}
+
+/* =======================
+   COMMON WRITE (robust)
+   ======================= */
+async function writeTelemetry(payload){
+  if(!TOKEN){ throw new Error("Missing JWT (?token=)"); }
+  // Attempt 1: JWT timeseries (no trailing slash)
+  const url1 = `${API_BASE}/plugins/telemetry/DEVICE/${DEVICE_ID}/timeseries`;
+  let res = await fetch(url1, {
+    method: "POST",
+    headers: { "X-Authorization": `Bearer ${TOKEN}`, "Content-Type": "application/json" },
+    body: JSON.stringify(payload)
+  });
+
+  if(res.ok) return;
+
+  const text1 = await res.text().catch(()=>res.statusText||"");
+  const looksLikeAttrScope = /AttributeScope/i.test(text1);
+
+  if (looksLikeAttrScope) {
+    // Attempt 2: add trailing slash
+    const url2 = `${API_BASE}/plugins/telemetry/DEVICE/${DEVICE_ID}/timeseries/`;
+    res = await fetch(url2, {
+      method: "POST",
+      headers: { "X-Authorization": `Bearer ${TOKEN}`, "Content-Type": "application/json" },
+      body: JSON.stringify(payload)
+    });
+    if(res.ok) return;
+
+    const text2 = await res.text().catch(()=>res.statusText||"");
+    // Attempt 3: device HTTP telemetry (needs ?dtoken=...)
+    if (DTOKEN) {
+      const origin = new URL(API_BASE).origin;
+      const url3 = `${origin}/api/v1/${DTOKEN}/telemetry`;
+      res = await fetch(url3, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
+      });
+      if(res.ok) return;
+      const text3 = await res.text().catch(()=>res.statusText||"");
+      throw new Error(`Save failed (all attempts).
+1) ${url1}: ${text1}
+2) ${url2}: ${text2}
+3) ${url3}: ${text3}`);
+    } else {
+      throw new Error(`Save failed.
+${url1}: ${text1}
+${url2}: ${text2}
+Tip: pass ?dtoken=<DEVICE_ACCESS_TOKEN> to use the device telemetry endpoint as a fallback.`);
+    }
+  } else {
+    // Not AttributeScope, but still failed → try trailing slash once
+    const url2 = `${API_BASE}/plugins/telemetry/DEVICE/${DEVICE_ID}/timeseries/`;
+    const res2 = await fetch(url2, {
+      method: "POST",
+      headers: { "X-Authorization": `Bearer ${TOKEN}`, "Content-Type": "application/json" },
+      body: JSON.stringify(payload)
+    });
+    if (res2.ok) return;
+    const text2 = await res2.text().catch(()=>res2.statusText||"");
+    throw new Error(`Save failed.
+${url1}: ${text1}
+${url2}: ${text2}`);
+  }
 }
 
 /* =======================
@@ -311,6 +388,24 @@ function showDetails(ev){
 }
 
 /* =======================
+   QUICK DUMP (operator only)
+   ======================= */
+$("#dumpBtn").addEventListener("click", async () => {
+  const name = ($("#dumpInput").value || "").trim();
+  const out = $("#dumpStatus");
+  if(!name){ out.innerHTML = '<span class="err">Enter a name to dump.</span>'; return; }
+  out.textContent = 'Writing…';
+
+  try{
+    await writeTelemetry({ "Training_Operator_Name": name });
+    out.innerHTML = `<span class="ok">Dumped</span> Training_Operator_Name = <b>${escapeHtml(name)}</b> @ ${new Date().toLocaleTimeString()}`;
+  }catch(e){
+    console.error(e);
+    out.innerHTML = `<span class="err">Failed:</span> ${escapeHtml(e.message||String(e))}`;
+  }
+});
+
+/* =======================
    CREATE SESSION (Modal)
    ======================= */
 const overlay = $("#overlay");
@@ -333,15 +428,11 @@ function mergeDateTime(baseDate, hhmm){
   return d.getTime(); // epoch ms
 }
 
-/* ==== SAVE to TB (robust: tries /timeseries, /timeseries/, then device telemetry if ?dtoken=) ==== */
+/* ==== SAVE full session ==== */
 async function saveSession(){
   try{
-    if(!TOKEN){ alert("Missing JWT (?token=)"); return; }
-
     const base = state.clickedDate || new Date();
-    // Mapping as requested:
-    // Time To    -> Training_Start
-    // Time From  -> Training_End
+    // Mapping as requested (Time To -> Start, Time From -> End)
     const payload = {
       Training_Title: $("#fTitle").value.trim(),
       Training_Operator_Name: $("#fOperator").value.trim(),
@@ -365,62 +456,8 @@ async function saveSession(){
 
     loading("Saving…");
 
-    // Attempt 1: JWT timeseries (no trailing slash)
-    const url1 = `${API_BASE}/plugins/telemetry/DEVICE/${DEVICE_ID}/timeseries`;
-    let res = await fetch(url1, {
-      method: "POST",
-      headers: { "X-Authorization": `Bearer ${TOKEN}`, "Content-Type": "application/json" },
-      body: JSON.stringify(payload)
-    });
+    await writeTelemetry(payload);
 
-    if(!res.ok){
-      const text1 = await res.text().catch(()=>res.statusText||"");
-      const looksLikeAttrScope = /AttributeScope/i.test(text1);
-
-      if (looksLikeAttrScope) {
-        // Attempt 2: add trailing slash
-        const url2 = `${API_BASE}/plugins/telemetry/DEVICE/${DEVICE_ID}/timeseries/`;
-        res = await fetch(url2, {
-          method: "POST",
-          headers: { "X-Authorization": `Bearer ${TOKEN}`, "Content-Type": "application/json" },
-          body: JSON.stringify(payload)
-        });
-        if(!res.ok){
-          const text2 = await res.text().catch(()=>res.statusText||"");
-          // Attempt 3: device HTTP telemetry (needs ?dtoken=...)
-          if (DTOKEN) {
-            const origin = new URL(API_BASE).origin;
-            const url3 = `${origin}/api/v1/${DTOKEN}/telemetry`;
-            res = await fetch(url3, {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify(payload)
-            });
-            if(!res.ok){
-              const text3 = await res.text().catch(()=>res.statusText||"");
-              throw new Error(`Save failed (all attempts).\n1) ${url1}: ${text1}\n2) ${url2}: ${text2}\n3) ${url3}: ${text3}`);
-            }
-          } else {
-            throw new Error(`Save failed.\n${url1}: ${text1}\n${url2}: ${text2}\nTip: pass ?dtoken=<DEVICE_ACCESS_TOKEN> to use the device telemetry endpoint as a fallback.`);
-          }
-        }
-      } else {
-        // Not AttributeScope, but still failed → try trailing slash once
-        const url2 = `${API_BASE}/plugins/telemetry/DEVICE/${DEVICE_ID}/timeseries/`;
-        const res2 = await fetch(url2, {
-          method: "POST",
-          headers: { "X-Authorization": `Bearer ${TOKEN}`, "Content-Type": "application/json" },
-          body: JSON.stringify(payload)
-        });
-        if (!res2.ok) {
-          const text2 = await res2.text().catch(()=>res2.statusText||"");
-          throw new Error(`Save failed.\n${url1}: ${text1}\n${url2}: ${text2}`);
-        }
-        res = res2;
-      }
-    }
-
-    // Success → close modal and refresh current range
     overlay.style.display = "none";
     loading("Saved. Refreshing…");
     if (state.lastRange){
@@ -451,7 +488,7 @@ document.addEventListener("DOMContentLoaded", () => {
     events: [],
     eventContent,
     eventClick: (info) => showDetails(info.event),
-    dateClick: (info) => openModalForDate(info.date),     // NEW: open popup on day click
+    dateClick: (info) => openModalForDate(info.date),
     datesSet: async (info) => {
       try{
         loading("Loading…");
