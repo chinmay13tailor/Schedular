@@ -34,7 +34,7 @@
     /* FullCalendar tweaks */
     .fc .fc-toolbar{padding:10px}
     .fc .fc-toolbar-title{font-size:16px;font-weight:800}
-    .fc .fc-button{background:#fff;border:1px solid var(--ring);color:#fff;border-radius:10px;padding:6px 10px;color:#0f172a}
+    .fc .fc-button{background:#fff;border:1px solid var(--ring);color:#0f172a;border-radius:10px;padding:6px 10px}
     .fc-theme-standard td,.fc-theme-standard th{border-color:var(--ring)}
     .fc-daygrid-day-number{color:#64748b}
 
@@ -64,9 +64,11 @@
     .modal footer{display:flex;gap:10px;justify-content:flex-end;border-top:1px solid var(--ring);padding:10px 14px;border-radius:0 0 14px 14px}
     .danger{background:#fff;border:1px solid var(--red);color:#dc2626}
     .primary{background:linear-gradient(#3b82f6,#2563eb);color:#fff;border:0}
+
     .debug{margin-top:14px;padding-top:12px;border-top:1px dashed var(--ring)}
     .ok{color:#16a34a;font-weight:700}
     .err{color:#dc2626;font-weight:700}
+    .small{font-size:12px}
   </style>
 </head>
 <body>
@@ -90,6 +92,15 @@
   <aside class="side">
     <h3 class="h6">Session details</h3>
     <div id="details" class="empty">Select a session on the calendar</div>
+
+    <!-- Device token UI (for writes) -->
+    <div class="debug">
+      <h3 class="h6">Device token (for writes)</h3>
+      <input id="dtokenInput" class="input" type="text" placeholder="Paste device access token…"/>
+      <button id="setDTokenBtn" class="btn" style="margin-left:6px;">Use token</button>
+      <div class="small muted">Or pass via <code>&dtoken=...</code> in the URL</div>
+      <div id="dtokenStatus" class="small muted" style="margin-top:6px;"></div>
+    </div>
 
     <!-- Quick dump block -->
     <div class="debug">
@@ -155,7 +166,8 @@ const API_BASE   = "https://plantwiz.pimateck.in/api";
 const DEVICE_ID  = "991cf500-661a-11f0-90f1-775fee303094";
 const QS         = new URLSearchParams(location.search);
 const TOKEN      = QS.get("token")  || ""; // JWT (passed by TB HTML widget)
-const DTOKEN     = QS.get("dtoken") || ""; // optional device access token fallback
+// Device token: from URL or saved in browser (persist so you don’t re-paste every time)
+let DTOKEN       = QS.get("dtoken") || localStorage.getItem("tb_dtoken") || "";
 
 // Keys (includes Training_Title). We also accept both spellings for "Score".
 const TRAINING_KEYS = [
@@ -210,73 +222,85 @@ function eventContent(arg){
 }
 
 /* =======================
-   COMMON WRITE (robust)
+   WRITE HELPERS (robust)
    ======================= */
-async function writeTelemetry(payload){
-  if(!TOKEN){ throw new Error("Missing JWT (?token=)"); }
-  // Attempt 1: JWT timeseries (no trailing slash)
+function setDTokenUI(){
+  const el = $("#dtokenStatus");
+  if (DTOKEN) {
+    el.innerHTML = `<span class="ok">Write mode:</span> device telemetry (<code>/api/v1/${DTOKEN.slice(0,4)}…/telemetry</code>)`;
+    $("#dtokenInput").value = DTOKEN;
+  } else {
+    el.innerHTML = `<span class="err">Write mode:</span> JWT (server may block POST /timeseries). Paste device token or pass <code>&dtoken=</code>.`;
+  }
+}
+$("#setDTokenBtn").addEventListener("click", () => {
+  const v = ($("#dtokenInput").value||"").trim();
+  if (!v) { alert("Paste a device access token first."); return; }
+  DTOKEN = v;
+  localStorage.setItem("tb_dtoken", DTOKEN);
+  setDTokenUI();
+});
+
+async function postJwtTimeseries(payload){
   const url1 = `${API_BASE}/plugins/telemetry/DEVICE/${DEVICE_ID}/timeseries`;
   let res = await fetch(url1, {
     method: "POST",
     headers: { "X-Authorization": `Bearer ${TOKEN}`, "Content-Type": "application/json" },
     body: JSON.stringify(payload)
   });
-
   if(res.ok) return;
 
   const text1 = await res.text().catch(()=>res.statusText||"");
   const looksLikeAttrScope = /AttributeScope/i.test(text1);
-
   if (looksLikeAttrScope) {
-    // Attempt 2: add trailing slash
     const url2 = `${API_BASE}/plugins/telemetry/DEVICE/${DEVICE_ID}/timeseries/`;
     res = await fetch(url2, {
       method: "POST",
       headers: { "X-Authorization": `Bearer ${TOKEN}`, "Content-Type": "application/json" },
       body: JSON.stringify(payload)
     });
-    if(res.ok) return;
-
+    if (res.ok) return;
     const text2 = await res.text().catch(()=>res.statusText||"");
-    // Attempt 3: device HTTP telemetry (needs ?dtoken=...)
-    if (DTOKEN) {
-      const origin = new URL(API_BASE).origin;
-      const url3 = `${origin}/api/v1/${DTOKEN}/telemetry`;
-      res = await fetch(url3, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload)
-      });
-      if(res.ok) return;
-      const text3 = await res.text().catch(()=>res.statusText||"");
-      throw new Error(`Save failed (all attempts).
-1) ${url1}: ${text1}
-2) ${url2}: ${text2}
-3) ${url3}: ${text3}`);
-    } else {
-      throw new Error(`Save failed.
-${url1}: ${text1}
-${url2}: ${text2}
-Tip: pass ?dtoken=<DEVICE_ACCESS_TOKEN> to use the device telemetry endpoint as a fallback.`);
-    }
+    throw new Error(`${url1}: ${text1}\n${url2}: ${text2}`);
   } else {
-    // Not AttributeScope, but still failed → try trailing slash once
-    const url2 = `${API_BASE}/plugins/telemetry/DEVICE/${DEVICE_ID}/timeseries/`;
-    const res2 = await fetch(url2, {
-      method: "POST",
-      headers: { "X-Authorization": `Bearer ${TOKEN}`, "Content-Type": "application/json" },
-      body: JSON.stringify(payload)
-    });
-    if (res2.ok) return;
-    const text2 = await res2.text().catch(()=>res2.statusText||"");
-    throw new Error(`Save failed.
-${url1}: ${text1}
-${url2}: ${text2}`);
+    throw new Error(`${url1}: ${text1}`);
+  }
+}
+
+async function postDeviceTelemetry(payload){
+  if(!DTOKEN) throw new Error("Device token not set");
+  const origin = new URL(API_BASE).origin;
+  const url = `${origin}/api/v1/${DTOKEN}/telemetry`;
+  const res = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload)
+  });
+  if(!res.ok){
+    const text = await res.text().catch(()=>res.statusText||"");
+    throw new Error(`${url}: ${text}`);
+  }
+}
+
+async function writeTelemetry(payload){
+  if(!TOKEN){ throw new Error("Missing JWT (?token=)"); }
+  // Prefer device token if available (avoids your server's JWT POST restriction)
+  if (DTOKEN) { await postDeviceTelemetry(payload); return "device"; }
+  // Else try JWT, and if it fails with AttributeScope & DTOKEN exists, fall back
+  try{
+    await postJwtTimeseries(payload);
+    return "jwt";
+  }catch(e){
+    if (DTOKEN){
+      await postDeviceTelemetry(payload);
+      return "device";
+    }
+    throw new Error(`Save failed.\n${e.message}\nTip: set a device token (sidebar) or pass ?dtoken=<ACCESS_TOKEN>.`);
   }
 }
 
 /* =======================
-   FETCH (ThingsBoard)
+   READ (ThingsBoard)
    ======================= */
 async function fetchSessions(startMs, endMs){
   if(!TOKEN){ throw new Error("Missing JWT: pass ?token=YOUR_JWT in URL"); }
@@ -397,8 +421,8 @@ $("#dumpBtn").addEventListener("click", async () => {
   out.textContent = 'Writing…';
 
   try{
-    await writeTelemetry({ "Training_Operator_Name": name });
-    out.innerHTML = `<span class="ok">Dumped</span> Training_Operator_Name = <b>${escapeHtml(name)}</b> @ ${new Date().toLocaleTimeString()}`;
+    const mode = await writeTelemetry({ "Training_Operator_Name": name });
+    out.innerHTML = `<span class="ok">Dumped</span> Training_Operator_Name = <b>${escapeHtml(name)}</b> via <b>${mode}</b> @ ${new Date().toLocaleTimeString()}`;
   }catch(e){
     console.error(e);
     out.innerHTML = `<span class="err">Failed:</span> ${escapeHtml(e.message||String(e))}`;
@@ -455,11 +479,10 @@ async function saveSession(){
     for (const [label,val] of req){ if(!val){ alert(`Please enter ${label}`); return; } }
 
     loading("Saving…");
-
-    await writeTelemetry(payload);
+    const mode = await writeTelemetry(payload);
 
     overlay.style.display = "none";
-    loading("Saved. Refreshing…");
+    loading(`Saved via ${mode}. Refreshing…`);
     if (state.lastRange){
       state.events = await fetchSessions(state.lastRange.start.getTime(), state.lastRange.end.getTime()-1);
       fillSelectors(state.events);
@@ -480,6 +503,8 @@ async function saveSession(){
    BOOT
    ======================= */
 document.addEventListener("DOMContentLoaded", () => {
+  setDTokenUI();
+
   const calEl = $("#calendar");
   state.calendar = new FullCalendar.Calendar(calEl, {
     initialView: "dayGridMonth",
