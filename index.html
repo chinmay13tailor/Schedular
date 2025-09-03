@@ -1,0 +1,308 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>PlantWiz – Training Calendar</title>
+
+  <!-- FullCalendar -->
+  <link href="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.15/index.global.min.css" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.15/index.global.min.js"></script>
+
+  <style>
+    :root{
+      --bg:#ffffff; --muted:#f3f4f6; --text:#0f172a; --sub:#64748b; --ring:#e5e7eb;
+      --blue:#3b82f6; --green:#22c55e; --cyan:#06b6d4; --amber:#f59e0b; --red:#ef4444;
+    }
+    *{box-sizing:border-box}
+    body{margin:0;background:var(--bg);color:var(--text);font:14px/1.45 system-ui,-apple-system,Segoe UI,Roboto,Arial}
+    .app{display:grid;grid-template-columns:1fr 320px;gap:16px;min-height:100vh;padding:16px}
+    header{grid-column:1/-1;display:flex;gap:10px;align-items:center;border:1px solid var(--ring);border-radius:12px;background:#fff;padding:10px 12px}
+    .brand{font-weight:800}
+    .spacer{flex:1}
+    .select,.btn{border:1px solid var(--ring);background:#fff;border-radius:10px;padding:8px 10px}
+    .btn{cursor:pointer}
+    .card{border:1px solid var(--ring);border-radius:12px;background:#fff;overflow:hidden}
+    .side{border:1px solid var(--ring);border-radius:12px;background:#fff;padding:14px;position:sticky;top:16px;height:fit-content}
+    .empty{padding:12px;text-align:center;color:#64748b;background:var(--muted);border-radius:10px}
+    .h6{margin:0 0 10px;font-weight:900}
+    .kpi{display:grid;grid-template-columns:120px 1fr;gap:8px;font-size:13px}
+    .kpi span:first-child{color:#64748b}
+    footer{grid-column:1/-1;color:#64748b;font-size:12px;text-align:center}
+    @media(max-width:1024px){.app{grid-template-columns:1fr}.side{position:static}}
+    /* FullCalendar tweaks */
+    .fc .fc-toolbar{padding:10px}
+    .fc .fc-toolbar-title{font-size:16px;font-weight:800}
+    .fc .fc-button{background:#fff;border:1px solid var(--ring);color:var(--text);border-radius:10px;padding:6px 10px}
+    .fc-theme-standard td,.fc-theme-standard th{border-color:var(--ring)}
+    .fc-daygrid-day-number{color:#64748b}
+    /* Event chip */
+    .event{border-radius:10px;border:0;padding:6px 8px;color:#fff;font-weight:700;
+           box-shadow:0 1px 0 rgba(0,0,0,.08), 0 8px 16px -12px rgba(0,0,0,.25)}
+    .status-planned{background:var(--blue)}
+    .status-live{background:var(--green)}
+    .status-completed{background:var(--cyan)}
+    .status-cancelled{background:var(--red)}
+    .status-pending_approval{background:var(--amber)}
+    .sub{display:block;font-weight:600;opacity:.95}
+    .tiny{display:block;font-weight:600;opacity:.8;font-size:12px}
+    .badge{display:inline-block;border-radius:999px;padding:3px 8px;font-size:12px;color:#fff}
+    .b-planned{background:var(--blue)}.b-live{background:var(--green)}.b-completed{background:var(--cyan)}
+    .b-cancelled{background:var(--red)}.b-pending_approval{background:var(--amber)}
+    .muted{color:#64748b}
+    #loading{font-size:12px;color:#64748b;margin-left:8px}
+  </style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <div class="brand">PlantWiz • Training Calendar</div>
+    <div class="spacer"></div>
+    <select id="filterStatus" class="select">
+      <option value="">All Status</option>
+      <option>planned</option><option>live</option><option>completed</option>
+      <option>cancelled</option><option value="pending_approval">pending_approval</option>
+    </select>
+    <select id="filterTrainer" class="select"><option value="">All Trainers</option></select>
+    <select id="filterMachine" class="select"><option value="">All Machines</option></select>
+    <button id="btnToday" class="btn">Today</button>
+    <span id="loading"></span>
+  </header>
+
+  <div class="card"><div id="calendar"></div></div>
+
+  <aside class="side">
+    <h3 class="h6">Session details</h3>
+    <div id="details" class="empty">Select a session on the calendar</div>
+  </aside>
+
+  <footer>Keys: Training_Operator_Name · Trainer_Name · Training_Status · Training_Start · Training_End · Training_Score/Scrore_Obtained · Training_Topic · Training_Machine</footer>
+</div>
+
+<script>
+/* =======================
+   0) CONFIG (YOUR ENV)
+   ======================= */
+const API_BASE   = "https://plantwiz.pimateck.in/api";
+const DEVICE_ID  = "991cf500-661a-11f0-90f1-775fee303094"; // <- as provided
+const TOKEN      = new URLSearchParams(location.search).get("token") || ""; // JWT passed by TB HTML widget
+
+// Your 8 keys (supporting both score spellings)
+const TRAINING_KEYS = [
+  "Training_Operator_Name",
+  "Trainer_Name",
+  "Training_Status",
+  "Training_Start",
+  "Training_End",
+  "Training_Scrore_Obtained",   // original spelling
+  "Training_Score_Obtained",    // corrected spelling (if you use this instead)
+  "Training_Topic",
+  "Training_Machine"
+];
+
+// UI state
+const state = { raw: [], filtered: [], events: [], calendar: null, lastRange: null };
+
+/* =======================
+   1) HELPERS
+   ======================= */
+const $ = sel => document.querySelector(sel);
+const loading = (txt) => $("#loading").textContent = txt || "";
+
+function colorByStatus(s){
+  switch(String(s || "").toLowerCase()){
+    case "planned": return "status-planned";
+    case "live": return "status-live";
+    case "completed": return "status-completed";
+    case "cancelled": return "status-cancelled";
+    case "pending_approval": return "status-pending_approval";
+    default: return "status-planned";
+  }
+}
+
+function parseMaybeTs(v){
+  if (v == null) return null;
+  // numeric epoch string/number
+  if (/^\d+$/.test(String(v))) {
+    const n = Number(v);
+    return Number.isFinite(n) ? n : null;
+  }
+  // ISO string
+  const t = Date.parse(String(v));
+  return Number.isFinite(t) ? t : null;
+}
+
+function uniqIdFromRow(r){
+  const s = parseMaybeTs(r.Training_Start);
+  const e = parseMaybeTs(r.Training_End);
+  const op = (r.Training_Operator_Name || "").trim();
+  const m  = (r.Training_Machine || "").trim();
+  const t  = (r.Training_Topic || "").trim();
+  return `${op}|${m}|${t}|${s||""}|${e||""}`;
+}
+
+function eventContent(arg){
+  const p = arg.event.extendedProps;
+  const time = arg.timeText || "";
+  const machine = p.Training_Machine ? ` • ${escapeHtml(p.Training_Machine)}` : "";
+  const trainer = p.Trainer_Name ? ` – ${escapeHtml(p.Trainer_Name)}` : "";
+  return { html: `
+    <span class="sub">${time}${machine}</span>
+    <span>${escapeHtml(arg.event.title || "Training")}${trainer}</span>
+    <span class="tiny">${escapeHtml(p.Training_Operator_Name || "")}</span>
+  `};
+}
+function escapeHtml(s){ return String(s||"").replace(/[&<>"']/g, m=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[m])); }
+
+/* =======================
+   2) THINGSBOARD FETCH
+   ======================= */
+async function fetchSessions(startMs, endMs){
+  if(!TOKEN){ throw new Error("Missing JWT: pass ?token=YOUR_JWT in URL"); }
+  const keysParam = encodeURIComponent(TRAINING_KEYS.join(','));
+  const url = `${API_BASE}/plugins/telemetry/DEVICE/${DEVICE_ID}/values/timeseries?keys=${keysParam}&startTs=${startMs}&endTs=${endMs}&limit=10000&agg=NONE&order=ASC`;
+
+  const res = await fetch(url, { headers: { "X-Authorization": `Bearer ${TOKEN}` }});
+  if(!res.ok){
+    const msg = await res.text().catch(()=>res.statusText);
+    throw new Error(`TB fetch failed: ${res.status} ${msg}`);
+  }
+  const json = await res.json();
+
+  // stitch by telemetry timestamp: build rows (one "snapshot" per ts)
+  const map = new Map();
+  for (const [key, arr] of Object.entries(json || {})) {
+    (arr || []).forEach(p => {
+      const ts = Number(p.ts);
+      if (!Number.isFinite(ts)) return;
+      const row = map.get(ts) || { __ts: ts };
+      row[key] = p.value;
+      map.set(ts, row);
+    });
+  }
+
+  // normalize & dedupe sessions
+  const byId = new Map();
+  for (const row of [...map.values()]) {
+    // prefer corrected score name if both exist
+    row.Training_Score_Obtained = row.Training_Score_Obtained ?? row.Training_Scrore_Obtained ?? null;
+
+    const s = parseMaybeTs(row.Training_Start);
+    const e = parseMaybeTs(row.Training_End);
+    if (!s || !e) continue; // need both to place on calendar
+
+    const id = uniqIdFromRow(row);
+    const prev = byId.get(id) || {};
+    // Keep the latest snapshot per session (based on __ts)
+    const keep = (!prev.__ts || (row.__ts > prev.__ts)) ? row : prev;
+    byId.set(id, keep);
+  }
+
+  // convert to calendar events
+  const items = [...byId.values()].map(r => ({
+    id: uniqIdFromRow(r),
+    title: r.Training_Topic || "Training",
+    start: new Date(parseMaybeTs(r.Training_Start)),
+    end:   new Date(parseMaybeTs(r.Training_End)),
+    classNames: ["event", colorByStatus(r.Training_Status)],
+    extendedProps: r
+  }));
+
+  return items;
+}
+
+/* =======================
+   3) UI WIRING
+   ======================= */
+function fillSelectors(events){
+  const uniq = a => [...new Set(a.filter(Boolean))].sort((x,y)=>String(x).localeCompare(String(y)));
+  const trainers = uniq(events.map(e => e.extendedProps.Trainer_Name));
+  const machines = uniq(events.map(e => e.extendedProps.Training_Machine));
+  const fT = $("#filterTrainer"); const fM = $("#filterMachine");
+  fT.innerHTML = '<option value="">All Trainers</option>';
+  fM.innerHTML = '<option value="">All Machines</option>';
+  trainers.forEach(t => fT.insertAdjacentHTML('beforeend', `<option>${escapeHtml(t)}</option>`));
+  machines.forEach(m => fM.insertAdjacentHTML('beforeend', `<option>${escapeHtml(m)}</option>`));
+}
+
+function applyFilters(){
+  const s = $("#filterStatus").value.trim();
+  const t = $("#filterTrainer").value.trim();
+  const m = $("#filterMachine").value.trim();
+
+  const filtered = state.events.filter(ev => {
+    const p = ev.extendedProps;
+    return (!s || String(p.Training_Status).toLowerCase() === s.toLowerCase())
+        && (!t || p.Trainer_Name === t)
+        && (!m || p.Training_Machine === m);
+  });
+
+  state.calendar.removeAllEvents();
+  state.calendar.addEventSource(filtered);
+  $("#details").className = "empty";
+  $("#details").textContent = "Select a session on the calendar";
+}
+
+function showDetails(ev){
+  const p = ev.extendedProps;
+  const fmt = (v)=> v ? new Date(parseMaybeTs(v)).toLocaleString() : "-";
+  const score = (p.Training_Score_Obtained == null || p.Training_Score_Obtained === "") ? "—" : p.Training_Score_Obtained;
+  const badge = `badge b-${String(p.Training_Status||'planned').replace(' ','_')}`;
+  $("#details").className = "";
+  $("#details").innerHTML = `
+    <div class="kpi">
+      <span>Status</span><span><span class="${badge}">${escapeHtml(p.Training_Status||'planned')}</span></span>
+      <span>Topic</span><span>${escapeHtml(p.Training_Topic||'-')}</span>
+      <span>Operator</span><span>${escapeHtml(p.Training_Operator_Name||'-')}</span>
+      <span>Trainer</span><span>${escapeHtml(p.Trainer_Name||'-')}</span>
+      <span>Machine</span><span>${escapeHtml(p.Training_Machine||'-')}</span>
+      <span>Start</span><span>${fmt(p.Training_Start)}</span>
+      <span>End</span><span>${fmt(p.Training_End)}</span>
+      <span>Score</span><span>${escapeHtml(score)}</span>
+    </div>`;
+}
+
+/* =======================
+   4) BOOT
+   ======================= */
+document.addEventListener("DOMContentLoaded", () => {
+  const calEl = $("#calendar");
+  state.calendar = new FullCalendar.Calendar(calEl, {
+    initialView: "dayGridMonth",
+    headerToolbar: { left: "prev,next", center: "title", right: "" },
+    height: "auto",
+    events: [],
+    eventContent,
+    eventClick: (info) => showDetails(info.event),
+    datesSet: async (info) => {
+      try{
+        loading("Loading…");
+        const start = info.start; // Date objects (inclusive start, exclusive end)
+        const end   = info.end;
+        state.lastRange = { start, end };
+        const startMs = start.getTime();
+        const endMs   = end.getTime() - 1;
+
+        // Fetch, fill filters, apply current filters
+        state.events = await fetchSessions(startMs, endMs);
+        fillSelectors(state.events);
+        applyFilters();
+        loading(`Loaded ${state.events.length} session(s)`);
+      }catch(err){
+        console.error(err);
+        loading(err.message || "Failed to load");
+        // keep calendar empty on error
+        state.calendar.removeAllEvents();
+      }
+    }
+  });
+  state.calendar.render();
+
+  $("#btnToday").addEventListener("click", () => state.calendar.today());
+  ["filterStatus","filterTrainer","filterMachine"].forEach(id => {
+    document.getElementById(id).addEventListener("change", applyFilters);
+  });
+});
+</script>
+</body>
+</html>
