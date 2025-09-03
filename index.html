@@ -3,16 +3,15 @@
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
-<title>PlantWiz • Training Calendar</title>
+<title>PlantWiz • Training Calendar (Telemetry)</title>
 
-<!-- FullCalendar (single CDN) -->
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.11/index.global.min.css">
 <style>
-  :root{--ring:#e5e7eb;--bg:#ffffff;--text:#0f172a;--muted:#64748b;
-        --blue:#3b82f6;--green:#22c55e;--cyan:#06b6d4;--amber:#f59e0b;--red:#ef4444;}
+  :root{--ring:#e5e7eb;--bg:#fff;--text:#0f172a;--muted:#64748b;
+        --blue:#3b82f6;--green:#22c55e;--cyan:#06b6d4;--amber:#f59e0b;--red:#ef4444}
   *{box-sizing:border-box}
   body{margin:0;background:var(--bg);color:var(--text);font:14px/1.45 system-ui,-apple-system,Segoe UI,Roboto,Arial}
-  .app{display:grid;grid-template-columns:1fr 320px;gap:16px;min-height:100vh;padding:16px}
+  .app{display:grid;grid-template-columns:1fr 340px;gap:16px;min-height:100vh;padding:16px}
   header{grid-column:1/-1;display:flex;gap:10px;align-items:center;border:1px solid var(--ring);border-radius:12px;background:#fff;padding:10px 12px}
   .brand{font-weight:800}.spacer{flex:1}
   .btn,.input{border:1px solid var(--ring);border-radius:10px;background:#fff;padding:8px 10px}
@@ -44,6 +43,9 @@
   .b-completed{background:var(--cyan)} .b-cancelled{background:var(--red)}
   .b-pending_approval{background:var(--amber)}
   .muted{color:var(--muted)} #loading{font-size:12px;color:#64748b;margin-left:8px}
+  .hint{font-size:12px;margin-left:8px;color:#64748b}
+  .success{color:#16a34a}
+  .err{color:#dc2626;font-weight:700}
 
   .overlay{position:fixed;inset:0;background:rgba(15,23,42,.35);display:none;align-items:center;justify-content:center;z-index:50}
   .modal{width:min(520px,92vw);background:#fff;border:1px solid var(--ring);border-radius:14px;box-shadow:0 24px 48px rgba(0,0,0,.18)}
@@ -54,12 +56,15 @@
   .modal footer{display:flex;gap:10px;justify-content:flex-end;border-top:1px solid var(--ring);padding:10px 14px;border-radius:0 0 14px 14px}
   .danger{background:#fff;border:1px solid var(--red);color:#dc2626}
   .primary{background:linear-gradient(#3b82f6,#2563eb);color:#fff;border:0}
+  .well{border:1px dashed var(--ring);border-radius:8px;padding:8px;margin-top:8px;font-size:12px;color:#0f172a}
+  .well code{font-weight:700}
 </style>
 </head>
 <body>
 <div class="app">
   <header>
     <div class="brand">PlantWiz • Training Calendar</div>
+    <span id="mode" class="hint"></span>
     <div class="spacer"></div>
     <span id="loading"></span>
   </header>
@@ -69,14 +74,25 @@
   <aside class="side">
     <h3 class="h6">Session details</h3>
     <div id="details" class="empty">Select a session on the calendar</div>
+
+    <div class="well">
+      <div><strong>Write method:</strong> <span id="writeHow">Device telemetry</span></div>
+      <div style="margin-top:6px">
+        <label for="tok">Device token (for writes)</label>
+        <input id="tok" class="input" placeholder="Paste device access token">
+        <button id="useTok" class="btn" style="margin-top:6px">Use token</button>
+      </div>
+      <div class="muted" style="margin-top:6px">Or add <code>?dtoken=YOUR_TOKEN</code> to the URL.</div>
+    </div>
   </aside>
 
   <footer>
-    Stored as SERVER attributes <code>TrainCal_YYYY-MM-DD</code> (JSON array). Keys: Training_Title, Training_Operator_Name, Training_Start, Training_End, Trainer_Name, Training_Topic, Training_Machine, Training_Status
+    Saves as <strong>telemetry</strong> at <code>ts=Training_Start</code> with values:
+    Training_Title, Training_Operator_Name, Training_Start, Training_End, Trainer_Name, Training_Topic, Training_Machine, Training_Status
   </footer>
 </div>
 
-<!-- Modal -->
+<!-- Create modal -->
 <div class="overlay" id="overlay">
   <div class="modal">
     <header>
@@ -120,30 +136,30 @@
   </div>
 </div>
 
-<!-- FullCalendar JS at the end to avoid parse issues -->
 <script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.11/index.global.min.js"></script>
 <script>
 /************ CONFIG ************/
 var ORIGIN    = "https://plantwiz.pimateck.in";
 var API_BASE  = ORIGIN + "/api";
 var DEVICE_ID = "991cf500-661a-11f0-90f1-775fee303094";
-var JWT       = new URLSearchParams(location.search).get("token") || "";
+var JWT       = new URLSearchParams(location.search).get("token")  || "";
+var DTOKEN    = new URLSearchParams(location.search).get("dtoken") || ""; // used for WRITE
+var KEYS = [
+  "Training_Title","Training_Operator_Name","Training_Start","Training_End",
+  "Trainer_Name","Training_Topic","Training_Machine","Training_Status"
+];
 
 /************ HELPERS ************/
 function $(s){ return document.querySelector(s); }
-function loading(t){ $("#loading").textContent = t || ""; }
+function loading(t){ $("#loading")..textContent = t || ""; }
 var state = { calendar:null, clickedDate:null, lastRange:null };
 
+function two(n){ return ('0'+n).slice(-2); }
 function mergeDateTime(baseDate, hhmm){
   var parts = String(hhmm||"00:00").split(":");
   var h = parseInt(parts[0]||"0",10), m = parseInt(parts[1]||"0",10);
-  var d = new Date(baseDate);
-  d.setHours(h||0, m||0, 0, 0);
+  var d = new Date(baseDate); d.setHours(h||0, m||0, 0, 0);
   return d.getTime();
-}
-function dayKey(d){
-  var y=d.getFullYear(), m=('0'+(d.getMonth()+1)).slice(-2), da=('0'+d.getDate()).slice(-2);
-  return "TrainCal_"+y+"-"+m+"-"+da;
 }
 function escapeHtml(s){
   return String(s||"").replace(/[&<>\"']/g, function(m){
@@ -171,83 +187,93 @@ function eventContent(arg){
   };
 }
 
-/************ SERVER ATTR (JWT) ************/
-function readDaySessions(dateObj){
-  if(!JWT) return Promise.reject(new Error("Missing JWT (?token=)"));
-  var key = dayKey(dateObj);
-  var url = API_BASE + "/plugins/telemetry/DEVICE/" + DEVICE_ID + "/values/attributes/SERVER_SCOPE?keys=" + encodeURIComponent(key);
-  return fetch(url, { headers: { "X-Authorization": "Bearer " + JWT } })
-    .then(function(res){
-      if(!res.ok) return res.text().then(function(t){ throw new Error("Read failed: "+t); });
-      return res.json();
-    })
-    .then(function(json){
-      var arr = json[key] || [];
-      if(!arr.length) return [];
-      var v = arr[0] && arr[0].value;
-      try { return v ? JSON.parse(v) : []; } catch(e){ return []; }
-    });
-}
-
-function saveDaySession(dateObj, sessionObj){
-  var key = dayKey(dateObj);
-  return readDaySessions(dateObj).then(function(existing){
-    existing.push(sessionObj);
-    var writeUrl = API_BASE + "/plugins/telemetry/DEVICE/" + DEVICE_ID + "/SERVER_SCOPE";
-    var payload = {}; payload[key] = JSON.stringify(existing);
-    return fetch(writeUrl, {
-      method: "POST",
-      headers: { "X-Authorization": "Bearer " + JWT, "Content-Type": "application/json" },
-      body: JSON.stringify(payload)
-    }).then(function(res){
-      if(!res.ok) return res.text().then(function(t){ throw new Error("Write failed: "+t); });
-    });
-  });
-}
-
+/************ TELEMETRY: READ ************/
+// GET timeseries for the visible range and keys, then group by identical ts
 function readRangeSessions(rangeStart, rangeEnd){
-  if(!JWT) return Promise.reject(new Error("Missing JWT (?token=)"));
-  var keys = [], d = new Date(rangeStart.getTime());
-  while (d < rangeEnd){
-    keys.push(dayKey(d));
-    d.setDate(d.getDate()+1);
-  }
-  if(!keys.length) return Promise.resolve([]);
-  var url = API_BASE + "/plugins/telemetry/DEVICE/" + DEVICE_ID + "/values/attributes/SERVER_SCOPE?keys=" + encodeURIComponent(keys.join(','));
+  if(!JWT){ return Promise.reject(new Error("Missing JWT (?token=) for reads")); }
+  var url = API_BASE + "/plugins/telemetry/DEVICE/" + DEVICE_ID + "/values/timeseries"
+          + "?keys=" + encodeURIComponent(KEYS.join(","))
+          + "&startTs=" + rangeStart.getTime()
+          + "&endTs="   + rangeEnd.getTime()
+          + "&limit=5000";
   return fetch(url, { headers: { "X-Authorization": "Bearer " + JWT } })
     .then(function(res){
-      if(!res.ok) return res.text().then(function(t){ throw new Error("Month read failed: "+t); });
+      if(!res.ok) return res.text().then(function(t){ throw new Error("Timeseries read failed: "+t); });
       return res.json();
     })
-    .then(function(json){
-      var out = [];
-      keys.forEach(function(k){
-        var arr = json[k] || [];
-        if(!arr.length) return;
-        var raw = arr[0] && arr[0].value; if(!raw) return;
-        var items = [];
-        try { items = JSON.parse(raw) || []; } catch(e){}
-        items.forEach(function(s, idx){
-          if(!s.Training_Start || !s.Training_End) return;
-          out.push({
-            id: k + "#" + idx,
-            title: s.Training_Title || s.Training_Topic || "Training",
-            start: new Date(Number(s.Training_Start)),
-            end:   new Date(Number(s.Training_End)),
-            classNames: ["event", colorByStatus(s.Training_Status)],
-            extendedProps: (function(){
-              var o = { __storeKey:k, __index:idx };
-              for (var prop in s) o[prop] = s[prop];
-              return o;
-            })()
-          });
+    .then(function(tsObj){
+      var map = {}; // ts -> obj of values
+      Object.keys(tsObj || {}).forEach(function(k){
+        (tsObj[k]||[]).forEach(function(p){
+          var ts = Number(p.ts);
+          var rec = map[ts] || (map[ts] = { ts: ts });
+          rec[k] = p.value;
         });
       });
+
+      // Build event list from grouped records
+      var out = [];
+      Object.keys(map).forEach(function(tsStr){
+        var r = map[tsStr];
+        var st = Number(r.Training_Start || r.ts);
+        var en = Number(r.Training_End || (st+30*60*1000));
+        // Only accept rows that look like sessions (have title or topic & operator)
+        if (!st || !en) return;
+        var title = String(r.Training_Title || r.Training_Topic || "Training");
+        out.push({
+          id: "ts-"+r.ts,
+          title: title,
+          start: new Date(st),
+          end:   new Date(en),
+          classNames: ["event", colorByStatus(r.Training_Status)],
+          extendedProps: {
+            Training_Title: title,
+            Training_Operator_Name: r.Training_Operator_Name || "",
+            Training_Start: st,
+            Training_End: en,
+            Trainer_Name: r.Trainer_Name || "",
+            Training_Topic: r.Training_Topic || "",
+            Training_Machine: r.Training_Machine || "",
+            Training_Status: r.Training_Status || "planned",
+            __ts: r.ts
+          }
+        });
+      });
+
+      // Sort by start time for deterministic display
+      out.sort(function(a,b){ return a.start - b.start; });
       return out;
     });
 }
 
-/************ DETAILS ************/
+/************ TELEMETRY: WRITE ************/
+// POST /api/v1/<token>/telemetry with provided ts and all 8 keys
+function writeTelemetrySession(session){
+  if(!DTOKEN){ return Promise.reject(new Error("No device token. Add ?dtoken=YOUR_TOKEN or paste it and click 'Use token'.")); }
+  var url = ORIGIN + "/api/v1/" + DTOKEN + "/telemetry";
+  var payload = {
+    ts: session.Training_Start,   // store at the start time
+    values: {
+      Training_Title: session.Training_Title,
+      Training_Operator_Name: session.Training_Operator_Name,
+      Training_Start: session.Training_Start,
+      Training_End: session.Training_End,
+      Trainer_Name: session.Trainer_Name,
+      Training_Topic: session.Training_Topic,
+      Training_Machine: session.Training_Machine,
+      Training_Status: session.Training_Status || "planned"
+    }
+  };
+  return fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload)
+  }).then(function(res){
+    if(!res.ok) return res.text().then(function(t){ throw new Error("Telemetry write failed: "+t); });
+  });
+}
+
+/************ DETAILS PANEL ************/
 function showDetails(ev){
   var p = ev.extendedProps;
   function fmt(v){ return v ? new Date(Number(v)).toLocaleString() : "-"; }
@@ -255,6 +281,7 @@ function showDetails(ev){
   $("#details").className = "";
   $("#details").innerHTML =
     '<div class="kpi">'+
+      '<span>Base ts</span><span>'+escapeHtml(String(p.__ts||"-"))+'</span>'+
       '<span>Status</span><span><span class="'+badge+'">'+escapeHtml(p.Training_Status||"planned")+'</span></span>'+
       '<span>Title</span><span>'+escapeHtml(p.Training_Title||"-")+'</span>'+
       '<span>Topic</span><span>'+escapeHtml(p.Training_Topic||"-")+'</span>'+
@@ -270,6 +297,10 @@ function showDetails(ev){
 var overlay = $("#overlay");
 $("#closeModal").addEventListener("click", function(){ overlay.style.display = "none"; });
 $("#saveSession").addEventListener("click", onSaveSession);
+$("#useTok").addEventListener("click", function(){
+  DTOKEN = ($("#tok").value||"").trim();
+  if (DTOKEN) { $("#mode").innerHTML = 'Write via <code>/api/v1/'+DTOKEN+'/telemetry</code>'; alert("Device token set for writes."); }
+});
 
 function openModalForDate(jsDate){
   state.clickedDate = new Date(jsDate.getFullYear(), jsDate.getMonth(), jsDate.getDate());
@@ -281,7 +312,6 @@ function openModalForDate(jsDate){
 
 function onSaveSession(){
   try{
-    if(!JWT){ alert("Missing JWT (?token=)"); return; }
     var base = state.clickedDate || new Date();
     var payload = {
       Training_Title: $("#fTitle").value.trim(),
@@ -303,8 +333,14 @@ function onSaveSession(){
     for (var i=0;i<must.length;i++){ if(!must[i][1]){ alert("Please enter "+must[i][0]); return; } }
     if (payload.Training_End <= payload.Training_Start){ alert("Time From must be after Time To."); return; }
 
-    loading("Saving…");
-    saveDaySession(base, payload)
+    if(!DTOKEN){
+      $("#tok").focus();
+      alert("Please set the device token to save telemetry. Add ?dtoken=... to URL or paste token and click 'Use token'.");
+      return;
+    }
+
+    loading("Saving telemetry…");
+    writeTelemetrySession(payload)
       .then(function(){
         overlay.style.display = "none";
         if (state.lastRange){
@@ -315,9 +351,7 @@ function onSaveSession(){
             $("#details").className="empty"; $("#details").textContent="Select a session on the calendar";
             loading("Loaded "+events.length+" session(s)");
           });
-        } else {
-          loading("");
-        }
+        } else { loading(""); }
       })
       .catch(function(e){ console.error(e); alert(e.message||"Failed to save"); loading(""); });
   }catch(e){
@@ -327,9 +361,13 @@ function onSaveSession(){
 
 /************ BOOT ************/
 window.addEventListener("load", function(){
+  $("#tok").value = DTOKEN || "";
+  $("#mode").innerHTML = DTOKEN
+      ? 'Write via <code>/api/v1/'+DTOKEN+'/telemetry</code>'
+      : 'Set <code>?dtoken=YOUR_TOKEN</code> or paste token to enable writes';
   if (!window.FullCalendar){ 
     document.getElementById('calendar').innerHTML =
-      '<div class="empty">FullCalendar failed to load. Check network/CSP.</div>';
+      '<div class="empty"><span class="err">FullCalendar failed to load.</span></div>';
     return;
   }
   var calEl = $("#calendar");
