@@ -1,88 +1,76 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="utf-8"/>
-  <meta name="viewport" content="width=device-width, initial-scale=1"/>
-  <title>PlantWiz – Training Calendar</title>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>PlantWiz • Training Calendar</title>
 
-  <!-- FullCalendar -->
-  <link href="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.15/index.global.min.css" rel="stylesheet">
-  <script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.15/index.global.min.js"></script>
+<!-- FullCalendar -->
+<link href="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.15/index.global.min.css" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.15/index.global.min.js"></script>
 
-  <style>
-    :root{
-      --bg:#ffffff; --muted:#f3f4f6; --text:#0f172a; --sub:#64748b; --ring:#e5e7eb;
-      --blue:#3b82f6; --green:#22c55e; --cyan:#06b6d4; --amber:#f59e0b; --red:#ef4444;
-    }
-    *{box-sizing:border-box}
-    body{margin:0;background:var(--bg);color:var(--text);font:14px/1.45 system-ui,-apple-system,Segoe UI,Roboto,Arial}
-    .app{display:grid;grid-template-columns:1fr 320px;gap:16px;min-height:100vh;padding:16px}
-    header{grid-column:1/-1;display:flex;gap:10px;align-items:center;border:1px solid var(--ring);border-radius:12px;background:#fff;padding:10px 12px}
-    .brand{font-weight:800}
-    .spacer{flex:1}
-    .select,.btn,.input{border:1px solid var(--ring);background:#fff;border-radius:10px;padding:8px 10px}
-    .btn{cursor:pointer}
-    .card{border:1px solid var(--ring);border-radius:12px;background:#fff;overflow:hidden}
-    .side{border:1px solid var(--ring);border-radius:12px;background:#fff;padding:14px;position:sticky;top:16px;height:fit-content}
-    .empty{padding:12px;text-align:center;color:#64748b;background:var(--muted);border-radius:10px}
-    .h6{margin:0 0 10px;font-weight:900}
-    .kpi{display:grid;grid-template-columns:120px 1fr;gap:8px;font-size:13px}
-    .kpi span:first-child{color:#64748b}
-    footer{grid-column:1/-1;color:#64748b;font-size:12px;text-align:center}
-    @media(max-width:1024px){.app{grid-template-columns:1fr}.side{position:static}}
+<style>
+  :root{
+    --ring:#e5e7eb; --bg:#ffffff; --text:#0f172a; --muted:#64748b;
+    --blue:#3b82f6; --green:#22c55e; --cyan:#06b6d4; --amber:#f59e0b; --red:#ef4444;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--text);font:14px/1.45 system-ui,-apple-system,Segoe UI,Roboto,Arial}
+  .app{display:grid;grid-template-columns:1fr 320px;gap:16px;min-height:100vh;padding:16px}
+  header{grid-column:1/-1;display:flex;gap:10px;align-items:center;border:1px solid var(--ring);border-radius:12px;background:#fff;padding:10px 12px}
+  .brand{font-weight:800}
+  .spacer{flex:1}
+  .btn,.input,select{border:1px solid var(--ring);border-radius:10px;background:#fff;padding:8px 10px}
+  .btn{cursor:pointer;font-weight:800}
+  .card{border:1px solid var(--ring);border-radius:12px;background:#fff;overflow:hidden}
+  .side{border:1px solid var(--ring);border-radius:12px;background:#fff;padding:14px;position:sticky;top:16px;height:fit-content}
+  .empty{padding:12px;text-align:center;color:#64748b;background:#f8fafc;border-radius:10px}
+  .h6{margin:0 0 10px;font-weight:900}
+  .kpi{display:grid;grid-template-columns:120px 1fr;gap:8px;font-size:13px}
+  .kpi span:first-child{color:#64748b}
+  footer{grid-column:1/-1;color:#64748b;font-size:12px;text-align:center}
+  @media(max-width:1024px){.app{grid-template-columns:1fr}.side{position:static}}
 
-    /* FullCalendar tweaks */
-    .fc .fc-toolbar{padding:10px}
-    .fc .fc-toolbar-title{font-size:16px;font-weight:800}
-    .fc .fc-button{background:#fff;border:1px solid var(--ring);color:#0f172a;border-radius:10px;padding:6px 10px}
-    .fc-theme-standard td,.fc-theme-standard th{border-color:var(--ring)}
-    .fc-daygrid-day-number{color:#64748b}
+  /* FC cosmetics */
+  .fc .fc-toolbar{padding:10px}
+  .fc .fc-toolbar-title{font-size:16px;font-weight:800}
+  .fc .fc-button{background:#fff;border:1px solid var(--ring);color:#0f172a;border-radius:10px;padding:6px 10px}
+  .fc-theme-standard td,.fc-theme-standard th{border-color:var(--ring)}
+  .fc-daygrid-day-number{color:#64748b}
 
-    /* Event chip */
-    .event{border-radius:10px;border:0;padding:6px 8px;color:#fff;font-weight:700;
-           box-shadow:0 1px 0 rgba(0,0,0,.08), 0 8px 16px -12px rgba(0,0,0,.25)}
-    .status-planned{background:var(--blue)}
-    .status-live{background:var(--green)}
-    .status-completed{background:var(--cyan)}
-    .status-cancelled{background:var(--red)}
-    .status-pending_approval{background:var(--amber)}
-    .sub{display:block;font-weight:600;opacity:.95}
-    .tiny{display:block;font-weight:600;opacity:.8;font-size:12px}
-    .badge{display:inline-block;border-radius:999px;padding:3px 8px;font-size:12px;color:#fff}
-    .b-planned{background:var(--blue)}.b-live{background:var(--green)}.b-completed{background:var(--cyan)}
-    .b-cancelled{background:var(--red)}.b-pending_approval{background:var(--amber)}
-    .muted{color:#64748b}
-    #loading{font-size:12px;color:#64748b;margin-left:8px}
+  /* Event chip */
+  .event{border-radius:10px;border:0;padding:6px 8px;color:#fff;font-weight:700;
+         box-shadow:0 1px 0 rgba(0,0,0,.08), 0 8px 16px -12px rgba(0,0,0,.25)}
+  .status-planned{background:var(--blue)}
+  .status-live{background:var(--green)}
+  .status-completed{background:var(--cyan)}
+  .status-cancelled{background:var(--red)}
+  .status-pending_approval{background:var(--amber)}
+  .sub{display:block;font-weight:600;opacity:.95}
+  .tiny{display:block;font-weight:600;opacity:.8;font-size:12px}
+  .badge{display:inline-block;border-radius:999px;padding:3px 8px;font-size:12px;color:#fff}
+  .b-planned{background:var(--blue)}.b-live{background:var(--green)}.b-completed{background:var(--cyan)}
+  .b-cancelled{background:var(--red)}.b-pending_approval{background:var(--amber)}
+  .muted{color:#64748b}
+  #loading{font-size:12px;color:#64748b;margin-left:8px}
 
-    /* ===== Modal (Create Session) ===== */
-    .overlay{position:fixed;inset:0;background:rgba(15,23,42,.35);display:none;align-items:center;justify-content:center;z-index:50}
-    .modal{width:min(520px,92vw);background:#fff;border:1px solid var(--ring);border-radius:14px;box-shadow:0 24px 48px rgba(0,0,0,.18)}
-    .modal header{display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid var(--ring);padding:12px 14px;border-radius:14px 14px 0 0}
-    .modal .body{padding:14px;display:grid;grid-template-columns:1fr 1fr;gap:10px}
-    .modal .row-full{grid-column:1 / -1}
-    .modal label{display:block;font-size:12px;color:#475569;font-weight:800;margin:0 0 6px}
-    .modal footer{display:flex;gap:10px;justify-content:flex-end;border-top:1px solid var(--ring);padding:10px 14px;border-radius:0 0 14px 14px}
-    .danger{background:#fff;border:1px solid var(--red);color:#dc2626}
-    .primary{background:linear-gradient(#3b82f6,#2563eb);color:#fff;border:0}
-
-    .debug{margin-top:14px;padding-top:12px;border-top:1px dashed var(--ring)}
-    .ok{color:#16a34a;font-weight:700}
-    .err{color:#dc2626;font-weight:700}
-    .small{font-size:12px}
-  </style>
+  /* Modal */
+  .overlay{position:fixed;inset:0;background:rgba(15,23,42,.35);display:none;align-items:center;justify-content:center;z-index:50}
+  .modal{width:min(520px,92vw);background:#fff;border:1px solid var(--ring);border-radius:14px;box-shadow:0 24px 48px rgba(0,0,0,.18)}
+  .modal header{display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid var(--ring);padding:12px 14px;border-radius:14px 14px 0 0}
+  .modal .body{padding:14px;display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  .modal .row-full{grid-column:1 / -1}
+  .modal label{display:block;font-size:12px;color:#475569;font-weight:800;margin:0 0 6px}
+  .modal footer{display:flex;gap:10px;justify-content:flex-end;border-top:1px solid var(--ring);padding:10px 14px;border-radius:0 0 14px 14px}
+  .danger{background:#fff;border:1px solid var(--red);color:#dc2626}
+  .primary{background:linear-gradient(#3b82f6,#2563eb);color:#fff;border:0}
+</style>
 </head>
 <body>
 <div class="app">
   <header>
     <div class="brand">PlantWiz • Training Calendar</div>
     <div class="spacer"></div>
-    <select id="filterStatus" class="select">
-      <option value="">All Status</option>
-      <option>planned</option><option>live</option><option>completed</option>
-      <option>cancelled</option><option value="pending_approval">pending_approval</option>
-    </select>
-    <select id="filterTrainer" class="select"><option value="">All Trainers</option></select>
-    <select id="filterMachine" class="select"><option value="">All Machines</option></select>
     <button id="btnToday" class="btn">Today</button>
     <span id="loading"></span>
   </header>
@@ -92,29 +80,15 @@
   <aside class="side">
     <h3 class="h6">Session details</h3>
     <div id="details" class="empty">Select a session on the calendar</div>
-
-    <!-- Device token UI (for writes) -->
-    <div class="debug">
-      <h3 class="h6">Device token (for writes)</h3>
-      <input id="dtokenInput" class="input" type="text" placeholder="Paste device access token…"/>
-      <button id="setDTokenBtn" class="btn" style="margin-left:6px;">Use token</button>
-      <div class="small muted">Or pass via <code>&dtoken=...</code> in the URL</div>
-      <div id="dtokenStatus" class="small muted" style="margin-top:6px;"></div>
-    </div>
-
-    <!-- Quick dump block -->
-    <div class="debug">
-      <h3 class="h6">Quick Dump: Training_Operator_Name</h3>
-      <input id="dumpInput" class="input" type="text" placeholder="Type operator name…"/>
-      <button id="dumpBtn" class="btn" style="margin-left:6px;">Dump</button>
-      <div id="dumpStatus" class="muted" style="margin-top:6px;"></div>
-    </div>
   </aside>
 
-  <footer>Keys incl. creation mapping: Training_Title, Training_Operator_Name, Training_Start, Training_End, Trainer_Name, Training_Topic, Training_Machine, Training_Status</footer>
+  <footer>
+    Stored under SERVER attributes as <code>TrainCal_YYYY-MM-DD</code> (JSON array).
+    Keys per session: Training_Title, Training_Operator_Name, Training_Start, Training_End, Trainer_Name, Training_Topic, Training_Machine, Training_Status
+  </footer>
 </div>
 
-<!-- ===== Create Session Modal ===== -->
+<!-- Create Session Modal -->
 <div class="overlay" id="overlay">
   <div class="modal">
     <header>
@@ -160,53 +134,39 @@
 
 <script>
 /* =======================
-   0) CONFIG (YOUR ENV)
+   CONFIG
    ======================= */
-const API_BASE   = "https://plantwiz.pimateck.in/api";
-const DEVICE_ID  = "991cf500-661a-11f0-90f1-775fee303094";
-const QS         = new URLSearchParams(location.search);
-const TOKEN      = QS.get("token")  || ""; // JWT (passed by TB HTML widget)
-// Device token: from URL or saved in browser (persist so you don’t re-paste every time)
-let DTOKEN       = QS.get("dtoken") || localStorage.getItem("tb_dtoken") || "";
-
-// Keys (includes Training_Title). We also accept both spellings for "Score".
-const TRAINING_KEYS = [
-  "Training_Title",
-  "Training_Operator_Name",
-  "Trainer_Name",
-  "Training_Status",
-  "Training_Start",
-  "Training_End",
-  "Training_Scrore_Obtained",
-  "Training_Score_Obtained",
-  "Training_Topic",
-  "Training_Machine"
-];
-
-// UI state
-const state = { events: [], calendar: null, lastRange: null, clickedDate: null };
+const ORIGIN    = "https://plantwiz.pimateck.in";
+const API_BASE  = `${ORIGIN}/api`;
+const DEVICE_ID = "991cf500-661a-11f0-90f1-775fee303094";
+const JWT       = new URLSearchParams(location.search).get("token") || ""; // injected by TB HTML widget
 
 /* =======================
-   HELPERS
+   STATE / HELPERS
    ======================= */
-const $ = sel => document.querySelector(sel);
-const loading = (txt) => $("#loading").textContent = txt || "";
-function escapeHtml(s){ return String(s||"").replace(/[&<>"']/g, m=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[m])); }
-function colorByStatus(s){
-  switch(String(s || "").toLowerCase()){
-    case "planned": return "status-planned"; case "live": return "status-live";
-    case "completed": return "status-completed"; case "cancelled": return "status-cancelled";
-    case "pending_approval": return "status-pending_approval"; default: return "status-planned";
-  }
+const $ = s => document.querySelector(s);
+const loading = (t)=> $("#loading").textContent = t || "";
+
+const state = { calendar: null, clickedDate: null, lastRange: null };
+
+function mergeDateTime(baseDate, hhmm){
+  const [h,m] = String(hhmm||"00:00").split(":").map(x=>parseInt(x||"0",10));
+  const d = new Date(baseDate); d.setHours(h||0, m||0, 0, 0);
+  return d.getTime();
 }
-// Parse epoch ms / epoch sec / ISO / "YYYY-MM-DD HH:mm"
-function parseMaybeTs(v){
-  if (v == null) return null;
-  const s = String(v).trim();
-  if (/^\d+$/.test(s)) { const n=Number(s); return n<1e12 ? n*1000 : n; }
-  const m = s.match(/^(\d{4}-\d{2}-\d{2})\s+(\d{2}:\d{2})(:\d{2})?$/);
-  if (m){ const iso=`${m[1]}T${m[2]}${m[3]||''}+05:30`; const t=Date.parse(iso); return Number.isFinite(t)?t:null; }
-  const t = Date.parse(s); return Number.isFinite(t)?t:null;
+function dayKey(d){
+  const y=d.getFullYear(), m=String(d.getMonth()+1).padStart(2,'0'), da=String(d.getDate()).padStart(2,'0');
+  return `TrainCal_${y}-${m}-${da}`;
+}
+function escapeHtml(s){ return String(s||"").replace(/[&<>"']/g, m=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[m]); }
+function colorByStatus(s){
+  switch(String(s||"planned").toLowerCase()){
+    case "live": return "status-live";
+    case "completed": return "status-completed";
+    case "cancelled": return "status-cancelled";
+    case "pending_approval": return "status-pending_approval";
+    default: return "status-planned";
+  }
 }
 function eventContent(arg){
   const p = arg.event.extendedProps;
@@ -222,179 +182,89 @@ function eventContent(arg){
 }
 
 /* =======================
-   WRITE HELPERS (robust)
+   READ / WRITE (SERVER attributes with JWT)
    ======================= */
-function setDTokenUI(){
-  const el = $("#dtokenStatus");
-  if (DTOKEN) {
-    el.innerHTML = `<span class="ok">Write mode:</span> device telemetry (<code>/api/v1/${DTOKEN.slice(0,4)}…/telemetry</code>)`;
-    $("#dtokenInput").value = DTOKEN;
-  } else {
-    el.innerHTML = `<span class="err">Write mode:</span> JWT (server may block POST /timeseries). Paste device token or pass <code>&dtoken=</code>.`;
-  }
+// Read array for a single day → []
+async function readDaySessions(dateObj){
+  if(!JWT) throw new Error("Missing JWT (?token=) in URL.");
+  const key = dayKey(dateObj);
+  const url = `${API_BASE}/plugins/telemetry/DEVICE/${DEVICE_ID}/values/attributes/SERVER_SCOPE?keys=${encodeURIComponent(key)}`;
+  const res = await fetch(url, { headers: { "X-Authorization": `Bearer ${JWT}` } });
+  if (!res.ok){ const t=await res.text().catch(()=>res.statusText); throw new Error(`Read failed: ${t}`); }
+  const json = await res.json();
+  const arr = json[key] || [];
+  if (!arr.length) return [];
+  const v = arr[0]?.value;
+  try { return v ? JSON.parse(v) : []; } catch { return []; }
 }
-$("#setDTokenBtn").addEventListener("click", () => {
-  const v = ($("#dtokenInput").value||"").trim();
-  if (!v) { alert("Paste a device access token first."); return; }
-  DTOKEN = v;
-  localStorage.setItem("tb_dtoken", DTOKEN);
-  setDTokenUI();
-});
 
-async function postJwtTimeseries(payload){
-  const url1 = `${API_BASE}/plugins/telemetry/DEVICE/${DEVICE_ID}/timeseries`;
-  let res = await fetch(url1, {
+// Append a session object to that day and write back
+async function saveDaySession(dateObj, sessionObj){
+  const key = dayKey(dateObj);
+  const existing = await readDaySessions(dateObj);
+  existing.push(sessionObj);
+
+  const writeUrl = `${API_BASE}/plugins/telemetry/DEVICE/${DEVICE_ID}/SERVER_SCOPE`;
+  const payload  = { [key]: JSON.stringify(existing) };
+
+  const res = await fetch(writeUrl, {
     method: "POST",
-    headers: { "X-Authorization": `Bearer ${TOKEN}`, "Content-Type": "application/json" },
+    headers: {
+      "X-Authorization": `Bearer ${JWT}`,
+      "Content-Type": "application/json"
+    },
     body: JSON.stringify(payload)
   });
-  if(res.ok) return;
-
-  const text1 = await res.text().catch(()=>res.statusText||"");
-  const looksLikeAttrScope = /AttributeScope/i.test(text1);
-  if (looksLikeAttrScope) {
-    const url2 = `${API_BASE}/plugins/telemetry/DEVICE/${DEVICE_ID}/timeseries/`;
-    res = await fetch(url2, {
-      method: "POST",
-      headers: { "X-Authorization": `Bearer ${TOKEN}`, "Content-Type": "application/json" },
-      body: JSON.stringify(payload)
-    });
-    if (res.ok) return;
-    const text2 = await res.text().catch(()=>res.statusText||"");
-    throw new Error(`${url1}: ${text1}\n${url2}: ${text2}`);
-  } else {
-    throw new Error(`${url1}: ${text1}`);
-  }
+  if (!res.ok){ const t=await res.text().catch(()=>res.statusText); throw new Error(`Write failed: ${t}`); }
 }
 
-async function postDeviceTelemetry(payload){
-  if(!DTOKEN) throw new Error("Device token not set");
-  const origin = new URL(API_BASE).origin;
-  const url = `${origin}/api/v1/${DTOKEN}/telemetry`;
-  const res = await fetch(url, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload)
-  });
-  if(!res.ok){
-    const text = await res.text().catch(()=>res.statusText||"");
-    throw new Error(`${url}: ${text}`);
+// Read all days visible in the calendar (info.start inclusive, info.end exclusive)
+async function readRangeSessions(rangeStart, rangeEnd){
+  if(!JWT) throw new Error("Missing JWT (?token=) in URL.");
+  // Build day keys
+  const keys = [];
+  const d = new Date(rangeStart);
+  while (d < rangeEnd){
+    keys.push(dayKey(d));
+    d.setDate(d.getDate()+1);
   }
-}
+  if (!keys.length) return [];
 
-async function writeTelemetry(payload){
-  if(!TOKEN){ throw new Error("Missing JWT (?token=)"); }
-  // Prefer device token if available (avoids your server's JWT POST restriction)
-  if (DTOKEN) { await postDeviceTelemetry(payload); return "device"; }
-  // Else try JWT, and if it fails with AttributeScope & DTOKEN exists, fall back
-  try{
-    await postJwtTimeseries(payload);
-    return "jwt";
-  }catch(e){
-    if (DTOKEN){
-      await postDeviceTelemetry(payload);
-      return "device";
-    }
-    throw new Error(`Save failed.\n${e.message}\nTip: set a device token (sidebar) or pass ?dtoken=<ACCESS_TOKEN>.`);
-  }
-}
-
-/* =======================
-   READ (ThingsBoard)
-   ======================= */
-async function fetchSessions(startMs, endMs){
-  if(!TOKEN){ throw new Error("Missing JWT: pass ?token=YOUR_JWT in URL"); }
-  const keysParam = encodeURIComponent(TRAINING_KEYS.join(','));
-  const url = `${API_BASE}/plugins/telemetry/DEVICE/${DEVICE_ID}/values/timeseries?keys=${keysParam}&startTs=${startMs}&endTs=${endMs}&limit=10000&agg=NONE&order=ASC`;
-  const res = await fetch(url, { headers: { "X-Authorization": `Bearer ${TOKEN}` }});
-  if(!res.ok){ const msg = await res.text().catch(()=>res.statusText); throw new Error(`TB fetch failed: ${res.status} ${msg}`); }
+  const url = `${API_BASE}/plugins/telemetry/DEVICE/${DEVICE_ID}/values/attributes/SERVER_SCOPE?keys=${encodeURIComponent(keys.join(','))}`;
+  const res = await fetch(url, { headers: { "X-Authorization": `Bearer ${JWT}` } });
+  if (!res.ok){ const t=await res.text().catch(()=>res.statusText); throw new Error(`Month read failed: ${t}`); }
   const json = await res.json();
 
-  // Build rows by ts
-  const byTs = new Map();
-  for (const [key, arr] of Object.entries(json || {})) {
-    (arr || []).forEach(p => {
-      const ts = Number(p.ts); if(!Number.isFinite(ts)) return;
-      const r = byTs.get(ts) || { __ts: ts };
-      r[key] = p.value;
-      byTs.set(ts, r);
-    });
-  }
-
-  // Merge into session objects keyed by Operator|Machine|Topic|Title
-  const acc = new Map();
-  const idFor = (o,m,t,ttl)=>[o||'',m||'',t||'',ttl||''].join('|');
-  [...byTs.values()].sort((a,b)=>a.__ts-b.__ts).forEach(r=>{
-    r.Training_Score_Obtained = r.Training_Score_Obtained ?? r.Training_Scrore_Obtained ?? null;
-    const o=(r.Training_Operator_Name||'').trim(); const m=(r.Training_Machine||'').trim();
-    const t=(r.Training_Topic||'').trim(); const ttl=(r.Training_Title||'').trim();
-    const id=idFor(o,m,t,ttl)||'__unknown__';
-    const obj=acc.get(id) || { Operator:o, Machine:m, Topic:t, Title:ttl, Trainer:null, Status:null, Start:null, End:null, Score:null, _ts:0 };
-    if (r.Trainer_Name) obj.Trainer=r.Trainer_Name;
-    if (r.Training_Status) obj.Status=r.Training_Status;
-    if (r.Training_Start){ const ts=parseMaybeTs(r.Training_Start); if(ts) obj.Start=ts; }
-    if (r.Training_End){ const te=parseMaybeTs(r.Training_End); if(te) obj.End=te; }
-    if (r.Training_Score_Obtained!=null && r.Training_Score_Obtained!=='') obj.Score=r.Training_Score_Obtained;
-    obj._ts=r.__ts; acc.set(id,obj);
-  });
-
-  // To events
-  const events=[];
-  acc.forEach(o=>{
-    if(!o.Start || !o.End) return;
-    events.push({
-      id: `${o.Operator}|${o.Machine}|${o.Topic}|${o.Title}|${o.Start}|${o.End}`,
-      title: o.Title || o.Topic || "Training",
-      start: new Date(o.Start),
-      end:   new Date(o.End),
-      classNames: ["event", colorByStatus(o.Status||'planned')],
-      extendedProps: {
-        Training_Title: o.Title,
-        Training_Operator_Name: o.Operator,
-        Trainer_Name: o.Trainer,
-        Training_Status: o.Status,
-        Training_Start: o.Start,
-        Training_End: o.End,
-        Training_Score_Obtained: o.Score,
-        Training_Topic: o.Topic,
-        Training_Machine: o.Machine
-      }
+  // Flatten to event-ready objects
+  const out = [];
+  keys.forEach(k=>{
+    const arr = json[k] || [];
+    if (!arr.length) return;
+    const raw = arr[0]?.value;
+    if (!raw) return;
+    let items = [];
+    try { items = JSON.parse(raw) || []; } catch {}
+    items.forEach((s, idx) => {
+      if (!s.Training_Start || !s.Training_End) return;
+      out.push({
+        id: `${k}#${idx}`,
+        title: s.Training_Title || s.Training_Topic || "Training",
+        start: new Date(Number(s.Training_Start)),
+        end:   new Date(Number(s.Training_End)),
+        classNames: ["event", colorByStatus(s.Training_Status)],
+        extendedProps: { __storeKey:k, __index:idx, ...s }
+      });
     });
   });
-  return events;
+  return out;
 }
 
 /* =======================
-   FILTERS / DETAILS
+   DETAILS PANEL
    ======================= */
-function fillSelectors(events){
-  const uniq = a => [...new Set(a.filter(Boolean))].sort((x,y)=>String(x).localeCompare(String(y)));
-  const trainers = uniq(events.map(e => e.extendedProps.Trainer_Name));
-  const machines = uniq(events.map(e => e.extendedProps.Training_Machine));
-  const fT = $("#filterTrainer"); const fM = $("#filterMachine");
-  fT.innerHTML = '<option value="">All Trainers</option>';
-  fM.innerHTML = '<option value="">All Machines</option>';
-  trainers.forEach(t => fT.insertAdjacentHTML('beforeend', `<option>${escapeHtml(t)}</option>`));
-  machines.forEach(m => fM.insertAdjacentHTML('beforeend', `<option>${escapeHtml(m)}</option>`));
-}
-function applyFilters(){
-  const s = $("#filterStatus").value.trim();
-  const t = $("#filterTrainer").value.trim();
-  const m = $("#filterMachine").value.trim();
-  const filtered = state.events.filter(ev => {
-    const p = ev.extendedProps;
-    return (!s || String(p.Training_Status||'').toLowerCase()===s.toLowerCase())
-        && (!t || p.Trainer_Name===t)
-        && (!m || p.Training_Machine===m);
-  });
-  state.calendar.removeAllEvents();
-  state.calendar.addEventSource(filtered);
-  $("#details").className="empty"; $("#details").textContent="Select a session on the calendar";
-}
 function showDetails(ev){
   const p = ev.extendedProps;
-  const fmt = (v)=> v ? new Date(Number(v)).toLocaleString() : "-";
-  const score = (p.Training_Score_Obtained == null || p.Training_Score_Obtained === "") ? "—" : p.Training_Score_Obtained;
+  const fmt = v => v ? new Date(Number(v)).toLocaleString() : "-";
   const badge = `badge b-${String(p.Training_Status||'planned').replace(' ','_')}`;
   $("#details").className = "";
   $("#details").innerHTML = `
@@ -407,94 +277,70 @@ function showDetails(ev){
       <span>Machine</span><span>${escapeHtml(p.Training_Machine||'-')}</span>
       <span>Start</span><span>${fmt(p.Training_Start)}</span>
       <span>End</span><span>${fmt(p.Training_End)}</span>
-      <span>Score</span><span>${escapeHtml(score)}</span>
     </div>`;
 }
 
 /* =======================
-   QUICK DUMP (operator only)
-   ======================= */
-$("#dumpBtn").addEventListener("click", async () => {
-  const name = ($("#dumpInput").value || "").trim();
-  const out = $("#dumpStatus");
-  if(!name){ out.innerHTML = '<span class="err">Enter a name to dump.</span>'; return; }
-  out.textContent = 'Writing…';
-
-  try{
-    const mode = await writeTelemetry({ "Training_Operator_Name": name });
-    out.innerHTML = `<span class="ok">Dumped</span> Training_Operator_Name = <b>${escapeHtml(name)}</b> via <b>${mode}</b> @ ${new Date().toLocaleTimeString()}`;
-  }catch(e){
-    console.error(e);
-    out.innerHTML = `<span class="err">Failed:</span> ${escapeHtml(e.message||String(e))}`;
-  }
-});
-
-/* =======================
-   CREATE SESSION (Modal)
+   MODAL (CREATE)
    ======================= */
 const overlay = $("#overlay");
 $("#closeModal").addEventListener("click", () => overlay.style.display = "none");
-$("#saveSession").addEventListener("click", saveSession);
+$("#saveSession").addEventListener("click", onSaveSession);
 
 function openModalForDate(jsDate){
-  state.clickedDate = new Date(jsDate.getFullYear(), jsDate.getMonth(), jsDate.getDate()); // strip time
+  state.clickedDate = new Date(jsDate.getFullYear(), jsDate.getMonth(), jsDate.getDate()); // midnight
   $("#fDateHint").textContent = "Date: " + state.clickedDate.toDateString();
-  // sensible defaults
+  // reset
   $("#fTitle").value = ""; $("#fOperator").value = ""; $("#fTrainer").value = "";
-  $("#fTopic").value = ""; $("#fMachine").value = "";
-  $("#fTimeTo").value = "09:00"; $("#fTimeFrom").value = "11:00";
+  $("#fTopic").value = ""; $("#fMachine").value = ""; $("#fTimeTo").value = "09:00"; $("#fTimeFrom").value = "11:00";
   overlay.style.display = "flex";
 }
-function mergeDateTime(baseDate, hhmm){
-  const [h,m] = String(hhmm||"00:00").split(":").map(n=>parseInt(n||"0",10));
-  const d = new Date(baseDate);
-  d.setHours(h||0, m||0, 0, 0);
-  return d.getTime(); // epoch ms
-}
 
-/* ==== SAVE full session ==== */
-async function saveSession(){
+async function onSaveSession(){
   try{
+    if(!JWT){ alert("Missing JWT (?token=)"); return; }
     const base = state.clickedDate || new Date();
-    // Mapping as requested (Time To -> Start, Time From -> End)
     const payload = {
       Training_Title: $("#fTitle").value.trim(),
       Training_Operator_Name: $("#fOperator").value.trim(),
-      Training_Start: mergeDateTime(base, $("#fTimeTo").value),
-      Training_End:   mergeDateTime(base, $("#fTimeFrom").value),
+      Training_Start: mergeDateTime(base, $("#fTimeTo").value),   // Time To -> Start
+      Training_End:   mergeDateTime(base, $("#fTimeFrom").value), // Time From -> End
       Trainer_Name: $("#fTrainer").value.trim(),
       Training_Topic: $("#fTopic").value.trim(),
       Training_Machine: $("#fMachine").value.trim(),
       Training_Status: "planned"
     };
 
-    // basic validation
-    const req = [
-      ['Title', payload.Training_Title],
-      ['Operator', payload.Training_Operator_Name],
-      ['Trainer Name', payload.Trainer_Name],
-      ['Training Topic', payload.Training_Topic],
-      ['Training Machine', payload.Training_Machine]
+    // quick validation
+    const must = [
+      ["Title", payload.Training_Title],
+      ["Operator", payload.Training_Operator_Name],
+      ["Trainer Name", payload.Trainer_Name],
+      ["Training Topic", payload.Training_Topic],
+      ["Training Machine", payload.Training_Machine]
     ];
-    for (const [label,val] of req){ if(!val){ alert(`Please enter ${label}`); return; } }
+    for (const [label,val] of must){ if(!val){ alert(`Please enter ${label}`); return; } }
+    if (payload.Training_End <= payload.Training_Start){
+      alert("Time From must be after Time To."); return;
+    }
 
     loading("Saving…");
-    const mode = await writeTelemetry(payload);
-
+    await saveDaySession(base, payload);
     overlay.style.display = "none";
-    loading(`Saved via ${mode}. Refreshing…`);
+
+    // Refresh current range
     if (state.lastRange){
-      state.events = await fetchSessions(state.lastRange.start.getTime(), state.lastRange.end.getTime()-1);
-      fillSelectors(state.events);
-      applyFilters();
-      loading(`Loaded ${state.events.length} session(s)`);
+      loading("Refreshing…");
+      const events = await readRangeSessions(state.lastRange.start, state.lastRange.end);
+      state.calendar.removeAllEvents();
+      state.calendar.addEventSource(events);
+      loading(`Loaded ${events.length} session(s)`);
     } else {
-      state.calendar.refetchEvents?.();
       loading("");
     }
   }catch(e){
     console.error(e);
-    alert(e.message || "Failed to save session");
+    alert(e.message || "Failed to save");
     loading("");
   }
 }
@@ -503,25 +349,23 @@ async function saveSession(){
    BOOT
    ======================= */
 document.addEventListener("DOMContentLoaded", () => {
-  setDTokenUI();
-
   const calEl = $("#calendar");
   state.calendar = new FullCalendar.Calendar(calEl, {
     initialView: "dayGridMonth",
-    headerToolbar: { left: "prev,next", center: "title", right: "" },
+    headerToolbar: { left: "prev,next", center: "title", right: "" }, /* no search / meet / new event */
     height: "auto",
-    events: [],
     eventContent,
-    eventClick: (info) => showDetails(info.event),
-    dateClick: (info) => openModalForDate(info.date),
+    dateClick: (info)=> openModalForDate(info.date),
+    eventClick: (info)=> showDetails(info.event),
     datesSet: async (info) => {
       try{
         loading("Loading…");
-        const {start,end} = info; state.lastRange = {start,end};
-        state.events = await fetchSessions(start.getTime(), end.getTime()-1);
-        fillSelectors(state.events);
-        applyFilters();
-        loading(`Loaded ${state.events.length} session(s)`);
+        state.lastRange = { start: info.start, end: info.end }; // end is exclusive
+        const events = await readRangeSessions(info.start, info.end);
+        state.calendar.removeAllEvents();
+        state.calendar.addEventSource(events);
+        $("#details").className="empty"; $("#details").textContent="Select a session on the calendar";
+        loading(`Loaded ${events.length} session(s)`);
       }catch(err){
         console.error(err);
         loading(err.message || "Failed to load");
@@ -530,11 +374,7 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   });
   state.calendar.render();
-
-  $("#btnToday").addEventListener("click", () => state.calendar.today());
-  ["filterStatus","filterTrainer","filterMachine"].forEach(id =>
-    document.getElementById(id).addEventListener("change", applyFilters)
-  );
+  $("#btnToday").addEventListener("click", ()=> state.calendar.today());
 });
 </script>
 </body>
