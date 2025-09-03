@@ -10,7 +10,7 @@
   :root{--ring:#e5e7eb;--bg:#fff;--text:#0f172a;--muted:#64748b;
         --blue:#3b82f6;--green:#22c55e;--cyan:#06b6d4;--amber:#f59e0b;--red:#ef4444}
   *{box-sizing:border-box}
-  body{margin:0;background:#fff;color:var(--text);font:14px/1.45 system-ui,-apple-system,Segoe UI,Roboto,Arial}
+  body{margin:0;background:#fff;color:#0f172a;font:14px/1.45 system-ui,-apple-system,Segoe UI,Roboto,Arial}
   .app{display:grid;grid-template-columns:1fr 320px;gap:16px;min-height:100vh;padding:16px}
   header{grid-column:1/-1;display:flex;gap:10px;align-items:center;border:1px solid var(--ring);border-radius:12px;background:#fff;padding:10px 12px}
   .brand{font-weight:800}.spacer{flex:1}
@@ -113,14 +113,20 @@
         <label>Time From</label>
         <input id="fTimeFrom" class="input" type="time" value="11:00">
       </div>
+
+      <!-- NEW: Training Status -->
       <div class="row-full">
-        <label>Training Topic</label>
-        <input id="fTopic" class="input" type="text" placeholder="Short description">
+        <label>Training Status</label>
+        <select id="fStatus" class="input">
+          <option value="planned">planned</option>
+          <option value="live">live</option>
+          <option value="completed">completed</option>
+          <option value="cancelled">cancelled</option>
+          <option value="pending_approval">pending_approval</option>
+        </select>
+        <div class="muted" style="margin-top:6px">Choose <strong>planned</strong> to reactivate a cancelled session.</div>
       </div>
-      <div class="row-full">
-        <label>Training Machine</label>
-        <input id="fMachine" class="input" type="text" placeholder="e.g., LATHE-02">
-      </div>
+
       <div class="row-full muted" id="fDateHint">Date: —</div>
     </div>
     <footer>
@@ -330,6 +336,7 @@ $("#btnEdit").addEventListener("click", function(){
   $("#fMachine").value  = p.Training_Machine || "";
   $("#fTimeTo").value   = msToHHMM(p.Training_Start);
   $("#fTimeFrom").value = msToHHMM(p.Training_End);
+  $("#fStatus").value   = (p.Training_Status || "planned");   // NEW: prefill status
   $("#fDateHint").textContent = "Date: " + state.clickedDate.toDateString();
 
   overlay.style.display = "flex";
@@ -367,6 +374,7 @@ function openModalForDate(jsDate){
   $("#fTitle").value=""; $("#fOperator").value=""; $("#fTrainer").value="";
   $("#fTopic").value=""; $("#fMachine").value="";
   $("#fTimeTo").value="09:00"; $("#fTimeFrom").value="11:00";
+  $("#fStatus").value="planned";                                  // NEW: default status
   overlay.style.display = "flex";
 }
 
@@ -406,7 +414,7 @@ function collectFormPayload(base){
     Trainer_Name: $("#fTrainer").value.trim(),
     Training_Topic: $("#fTopic").value.trim(),
     Training_Machine: $("#fMachine").value.trim(),
-    Training_Status: "planned"
+    Training_Status: $("#fStatus").value || "planned"           // NEW: from dropdown
   };
 }
 
