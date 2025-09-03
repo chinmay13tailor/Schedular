@@ -61,7 +61,7 @@
 <div class="app">
   <header>
     <div class="brand">PlantWiz • Training Calendar</div>
-    <span class="muted">Write → <code>SERVER_SCOPE: Training_Write</code> + <code>Save_Button=false</code> (Rule chain mirrors to telemetry)</span>
+    <span class="muted">Write → <code>SERVER_SCOPE</code> attributes (8 fields) + <code>Save_Button=false</code> • Rule chain mirrors to telemetry</span>
     <div class="spacer"></div>
     <span id="loading"></span>
   </header>
@@ -74,8 +74,8 @@
   </aside>
 
   <footer>
-    UI writes attributes <code>Training_Write</code> (JSON) and <code>Save_Button=false</code>.  
-    Rule chain should write one telemetry row at <code>ts=Training_Start</code> with all fields **and** <code>Save_Button=true</code>.  
+    UI writes <strong>8 attributes</strong> + <code>Save_Button=false</code>.  
+    Rule chain should write one telemetry row at <code>ts=Training_Start</code> with all fields and <code>Save_Button=true</code>.  
     Calendar reads telemetry and shows <em>Saved</em>/<em>Pending</em>.
   </footer>
 </div>
@@ -132,10 +132,20 @@ var API_BASE  = ORIGIN + "/api";
 var DEVICE_ID = "991cf500-661a-11f0-90f1-775fee303094";
 var JWT       = new URLSearchParams(location.search).get("token")  || "";
 
-var ATTR_WRITE_KEY = "Training_Write";   // attribute buffer
-var ATTR_SAVE_FLAG = "Save_Button";      // attribute save flag
+// We now WRITE individual attributes (one per field) + Save_Button=false
+var ATTR_FIELDS = [
+  "Training_Title",
+  "Training_Operator_Name",
+  "Training_Start",
+  "Training_End",
+  "Trainer_Name",
+  "Training_Topic",
+  "Training_Machine",
+  "Training_Status"
+];
+var ATTR_SAVE_FLAG = "Save_Button";
 
-// Telemetry keys to read (add Save_Button so UI can show Saved/Pending)
+// Telemetry keys to read (include Save_Button so UI can show Saved/Pending)
 var KEYS = [
   "Training_Title","Training_Operator_Name","Training_Start","Training_End",
   "Trainer_Name","Training_Topic","Training_Machine","Training_Status",
@@ -238,17 +248,27 @@ function readRangeSessions(rangeStart, rangeEnd){
     });
 }
 
-/************ WRITE (attributes buffer + flag=false) ************/
-function writeAttributeBuffer(session){
+/************ WRITE (8 attributes + Save_Button=false) ************/
+function writeAttributesIndividually(session){
   if(!JWT) return Promise.reject(new Error("Missing JWT (?token=)"));
   var url = API_BASE + "/plugins/telemetry/DEVICE/" + DEVICE_ID + "/SERVER_SCOPE";
-  var payload = {};
-  payload[ATTR_WRITE_KEY] = JSON.stringify(session); // training payload
-  payload[ATTR_SAVE_FLAG] = false;                   // flag = false on save click
+
+  // Build the payload with the eight attributes + Save_Button=false
+  var body = {};
+  body["Training_Title"]         = session.Training_Title;
+  body["Training_Operator_Name"] = session.Training_Operator_Name;
+  body["Training_Start"]         = session.Training_Start; // ms
+  body["Training_End"]           = session.Training_End;   // ms
+  body["Trainer_Name"]           = session.Trainer_Name;
+  body["Training_Topic"]         = session.Training_Topic;
+  body["Training_Machine"]       = session.Training_Machine;
+  body["Training_Status"]        = session.Training_Status || "planned";
+  body[ATTR_SAVE_FLAG]           = false;
+
   return fetch(url, {
     method: "POST",
     headers: { "X-Authorization": "Bearer " + JWT, "Content-Type": "application/json" },
-    body: JSON.stringify(payload)
+    body: JSON.stringify(body)
   }).then(function(res){
     if(!res.ok) return res.text().then(function(t){ throw new Error("Attribute write failed: "+t); });
   });
@@ -313,10 +333,10 @@ function onSaveSession(){
   if (payload.Training_End <= payload.Training_Start){ alert("Time From must be after Time To."); return; }
 
   loading("Sending attributes…");
-  writeAttributeBuffer(payload)
+  writeAttributesIndividually(payload)
     .then(function(){
       overlay.style.display = "none";
-      // Wait a moment for the rule chain to insert telemetry (and set Save_Button=true), then refresh.
+      // Give the rule chain time to mirror to telemetry (and set Save_Button=true), then refresh.
       setTimeout(function(){
         if (state.lastRange){
           loading("Refreshing…");
