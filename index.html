@@ -16,6 +16,10 @@
   .brand{font-weight:800}.spacer{flex:1}
   .btn,.input{border:1px solid var(--ring);border-radius:10px;background:#fff;padding:8px 10px}
   .btn{cursor:pointer;font-weight:800}
+  .btn.primary{background:linear-gradient(#3b82f6,#2563eb);color:#fff;border:0}
+  .btn.danger{border-color:var(--red);color:#dc2626}
+  .btn.ghost{border-color:var(--ring);color:#0f172a}
+  .btn:disabled{opacity:.6;cursor:not-allowed}
   .card{border:1px solid var(--ring);border-radius:12px;background:#fff;overflow:hidden}
   #calendar{min-height:560px}
   .side{border:1px solid var(--ring);border-radius:12px;background:#fff;padding:14px;position:sticky;top:16px;height:fit-content}
@@ -23,6 +27,7 @@
   .h6{margin:0 0 10px;font-weight:900}
   .kpi{display:grid;grid-template-columns:120px 1fr;gap:8px;font-size:13px}
   .kpi span:first-child{color:#64748b}
+  .side-actions{display:flex;gap:8px;margin-top:12px}
   footer{grid-column:1/-1;color:#64748b;font-size:12px;text-align:center}
 
   .fc .fc-toolbar{padding:10px}
@@ -41,7 +46,7 @@
   .b-planned{background:var(--blue)} .b-live{background:var(--green)}
   .b-completed{background:var(--cyan)} .b-cancelled{background:var(--red)}
   .b-pending_approval{background:var(--amber)}
-  .b-saved{background:var(--green)} .b-pending{background:var(--amber)}
+  .b-saved{background:#16a34a} .b-pending{background:var(--amber)}
 
   .muted{color:var(--muted)} #loading{font-size:12px;color:#64748b;margin-left:8px}
   .success{color:#16a34a}.err{color:#dc2626;font-weight:700}
@@ -53,15 +58,13 @@
   .modal .row-full{grid-column:1 / -1}
   .modal label{display:block;font-size:12px;color:#475569;font-weight:800;margin:0 0 6px}
   .modal footer{display:flex;gap:10px;justify-content:flex-end;border-top:1px solid var(--ring);padding:10px 14px;border-radius:0 0 14px 14px}
-  .danger{background:#fff;border:1px solid var(--red);color:#dc2626}
-  .primary{background:linear-gradient(#3b82f6,#2563eb);color:#fff;border:0}
 </style>
 </head>
 <body>
 <div class="app">
   <header>
     <div class="brand">PlantWiz • Training Calendar</div>
-    <span class="muted">Write → <code>SERVER_SCOPE</code> attributes (8 fields) + <code>Save_Button=false</code> • Rule chain mirrors to telemetry</span>
+    <span class="muted">Create → <code>Save_Button=false</code>. Update/Cancel → <code>Update_Buttton=true</code> (no Save_Button).</span>
     <div class="spacer"></div>
     <span id="loading"></span>
   </header>
@@ -71,12 +74,14 @@
   <aside class="side">
     <h3 class="h6">Session details</h3>
     <div id="details" class="empty">Select a session on the calendar</div>
+    <div class="side-actions" id="sideActions" style="display:none">
+      <button class="btn danger"  id="btnCancel">Cancel training</button>
+      <button class="btn ghost"   id="btnEdit">Update</button>
+    </div>
   </aside>
 
   <footer>
-    UI writes <strong>8 attributes</strong> + <code>Save_Button=false</code>.  
-    Rule chain should write one telemetry row at <code>ts=Training_Start</code> with all fields and <code>Save_Button=true</code>.  
-    Calendar reads telemetry and shows <em>Saved</em>/<em>Pending</em>.
+    Calendar reads telemetry; rule-chain mirrors attributes to telemetry, then (optionally) flips flags.
   </footer>
 </div>
 
@@ -84,8 +89,8 @@
 <div class="overlay" id="overlay">
   <div class="modal">
     <header>
-      <div style="font-weight:900">Add training session</div>
-      <button class="btn danger" id="closeModal">Cancel</button>
+      <div style="font-weight:900" id="modalTitle">Add training session</div>
+      <button class="btn" id="closeModal">Close</button>
     </header>
     <div class="body">
       <div class="row-full">
@@ -132,30 +137,20 @@ var API_BASE  = ORIGIN + "/api";
 var DEVICE_ID = "991cf500-661a-11f0-90f1-775fee303094";
 var JWT       = new URLSearchParams(location.search).get("token")  || "";
 
-// We now WRITE individual attributes (one per field) + Save_Button=false
-var ATTR_FIELDS = [
-  "Training_Title",
-  "Training_Operator_Name",
-  "Training_Start",
-  "Training_End",
-  "Trainer_Name",
-  "Training_Topic",
-  "Training_Machine",
-  "Training_Status"
-];
-var ATTR_SAVE_FLAG = "Save_Button";
+// Flags
+var ATTR_SAVE_FLAG    = "Save_Button";       // used only for CREATE
+var ATTR_UPDATE_FLAG  = "Update_Buttton";    // used for UPDATE & CANCEL (spelling as requested)
 
-// Telemetry keys to read (include Save_Button so UI can show Saved/Pending)
+// Telemetry keys we read to render
 var KEYS = [
   "Training_Title","Training_Operator_Name","Training_Start","Training_End",
-  "Trainer_Name","Training_Topic","Training_Machine","Training_Status",
-  "Save_Button"
+  "Trainer_Name","Training_Topic","Training_Machine","Training_Status","Save_Button"
 ];
 
 /************ HELPERS ************/
 function $(s){ return document.querySelector(s); }
 function loading(t){ $("#loading").textContent = t || ""; }
-var state = { calendar:null, clickedDate:null, lastRange:null };
+var state = { calendar:null, clickedDate:null, lastRange:null, selectedEvent:null, mode:"create" };
 
 function mergeDateTime(baseDate, hhmm){
   var parts = String(hhmm||"00:00").split(":");
@@ -163,10 +158,14 @@ function mergeDateTime(baseDate, hhmm){
   var d = new Date(baseDate); d.setHours(h||0, m||0, 0, 0);
   return d.getTime();
 }
+function msToHHMM(ms){
+  var d = new Date(ms);
+  var hh = String(d.getHours()).padStart(2,'0');
+  var mm = String(d.getMinutes()).padStart(2,'0');
+  return hh + ":" + mm;
+}
 function escapeHtml(s){
-  return String(s||"").replace(/[&<>\"']/g, function(m){
-    return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m];
-  });
+  return String(s||"").replace(/[&<>\"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
 }
 function colorByStatus(s){
   s = String(s||"planned").toLowerCase();
@@ -202,14 +201,11 @@ function readRangeSessions(rangeStart, rangeEnd){
           + "&endTs="   + rangeEnd.getTime()
           + "&limit=5000";
   return fetch(url, { headers: { "X-Authorization": "Bearer " + JWT } })
-    .then(function(res){
-      if(!res.ok) return res.text().then(function(t){ throw new Error("Timeseries read failed: "+t); });
-      return res.json();
-    })
-    .then(function(tsObj){
+    .then(res => res.ok ? res.json() : res.text().then(t => { throw new Error("Timeseries read failed: "+t); }))
+    .then(tsObj => {
       var map = {}; // ts -> row
-      Object.keys(tsObj || {}).forEach(function(k){
-        (tsObj[k]||[]).forEach(function(p){
+      Object.keys(tsObj || {}).forEach(k => {
+        (tsObj[k]||[]).forEach(p => {
           var ts = Number(p.ts);
           var rec = map[ts] || (map[ts] = { ts: ts });
           rec[k] = p.value;
@@ -217,7 +213,7 @@ function readRangeSessions(rangeStart, rangeEnd){
       });
 
       var out = [];
-      Object.keys(map).forEach(function(tsStr){
+      Object.keys(map).forEach(tsStr => {
         var r = map[tsStr];
         var st = Number(r.Training_Start || r.ts);
         var en = Number(r.Training_End || (st+30*60*1000));
@@ -238,44 +234,51 @@ function readRangeSessions(rangeStart, rangeEnd){
             Training_Topic: r.Training_Topic || "",
             Training_Machine: r.Training_Machine || "",
             Training_Status: r.Training_Status || "planned",
-            Save_Button: r.Save_Button,                // "true"/"false" or boolean
+            Save_Button: r.Save_Button,
             __ts: r.ts
           }
         });
       });
-      out.sort(function(a,b){ return a.start - b.start; });
+      out.sort((a,b)=>a.start-b.start);
       return out;
     });
 }
 
-/************ WRITE (8 attributes + Save_Button=false) ************/
-function writeAttributesIndividually(session){
+/************ WRITE (attributes) ************/
+// opts.mode: "create" | "update" | "cancel"
+// - create: adds Save_Button=false
+// - update & cancel: adds Update_Buttton=true (NO Save_Button)
+function writeAttributes(session, opts){
   if(!JWT) return Promise.reject(new Error("Missing JWT (?token=)"));
   var url = API_BASE + "/plugins/telemetry/DEVICE/" + DEVICE_ID + "/SERVER_SCOPE";
 
-  // Build the payload with the eight attributes + Save_Button=false
-  var body = {};
-  body["Training_Title"]         = session.Training_Title;
-  body["Training_Operator_Name"] = session.Training_Operator_Name;
-  body["Training_Start"]         = session.Training_Start; // ms
-  body["Training_End"]           = session.Training_End;   // ms
-  body["Trainer_Name"]           = session.Trainer_Name;
-  body["Training_Topic"]         = session.Training_Topic;
-  body["Training_Machine"]       = session.Training_Machine;
-  body["Training_Status"]        = session.Training_Status || "planned";
-  body[ATTR_SAVE_FLAG]           = false;
+  var body = {
+    Training_Title:         session.Training_Title,
+    Training_Operator_Name: session.Training_Operator_Name,
+    Training_Start:         session.Training_Start,
+    Training_End:           session.Training_End,
+    Trainer_Name:           session.Trainer_Name,
+    Training_Topic:         session.Training_Topic,
+    Training_Machine:       session.Training_Machine,
+    Training_Status:        session.Training_Status || "planned"
+  };
+
+  if (opts && opts.mode === "create") {
+    body[ATTR_SAVE_FLAG] = false; // only for create
+  } else if (opts && (opts.mode === "update" || opts.mode === "cancel")) {
+    body[ATTR_UPDATE_FLAG] = true; // exact spelling
+  }
 
   return fetch(url, {
     method: "POST",
     headers: { "X-Authorization": "Bearer " + JWT, "Content-Type": "application/json" },
     body: JSON.stringify(body)
-  }).then(function(res){
-    if(!res.ok) return res.text().then(function(t){ throw new Error("Attribute write failed: "+t); });
-  });
+  }).then(res => res.ok ? null : res.text().then(t => { throw new Error("Attribute write failed: "+t); }));
 }
 
-/************ DETAILS ************/
+/************ DETAILS + ACTION BUTTONS ************/
 function showDetails(ev){
+  state.selectedEvent = ev;
   var p = ev.extendedProps;
   function fmt(v){ return v ? new Date(Number(v)).toLocaleString() : "-"; }
   var badge = "badge b-" + String(p.Training_Status || "planned").replace(" ","_");
@@ -294,15 +297,69 @@ function showDetails(ev){
       '<span>Start</span><span>'+fmt(p.Training_Start)+'</span>'+
       '<span>End</span><span>'+fmt(p.Training_End)+'</span>'+
     '</div>';
+
+  $("#sideActions").style.display = "flex";
 }
 
-/************ MODAL ************/
+/************ MODAL (create & update) ************/
 var overlay = $("#overlay");
 $("#closeModal").addEventListener("click", function(){ overlay.style.display = "none"; });
-$("#saveSession").addEventListener("click", onSaveSession);
+
+$("#saveSession").addEventListener("click", function(){
+  if (state.mode === "update") onUpdateSession();
+  else onCreateSession();
+});
+
+$("#btnEdit").addEventListener("click", function(){
+  if (!state.selectedEvent) return;
+  var p = state.selectedEvent.extendedProps;
+  state.mode = "update";
+  $("#modalTitle").textContent = "Update training session";
+  $("#saveSession").textContent = "Update";
+
+  var base = new Date(p.Training_Start);
+  state.clickedDate = new Date(base.getFullYear(), base.getMonth(), base.getDate());
+
+  $("#fTitle").value    = p.Training_Title || "";
+  $("#fOperator").value = p.Training_Operator_Name || "";
+  $("#fTrainer").value  = p.Trainer_Name || "";
+  $("#fTopic").value    = p.Training_Topic || "";
+  $("#fMachine").value  = p.Training_Machine || "";
+  $("#fTimeTo").value   = msToHHMM(p.Training_Start);
+  $("#fTimeFrom").value = msToHHMM(p.Training_End);
+  $("#fDateHint").textContent = "Date: " + state.clickedDate.toDateString();
+
+  overlay.style.display = "flex";
+});
+
+$("#btnCancel").addEventListener("click", function(){
+  if (!state.selectedEvent) return;
+  if (!confirm("Cancel this training?")) return;
+
+  var p = state.selectedEvent.extendedProps;
+  var payload = {
+    Training_Title: p.Training_Title || "",
+    Training_Operator_Name: p.Training_Operator_Name || "",
+    Training_Start: p.Training_Start,
+    Training_End:   p.Training_End,
+    Trainer_Name: p.Trainer_Name || "",
+    Training_Topic: p.Training_Topic || "",
+    Training_Machine: p.Training_Machine || "",
+    Training_Status: "cancelled"
+  };
+
+  loading("Cancelling…");
+  // CANCEL → send 8 attrs + Update_Buttton=true (NO Save_Button)
+  writeAttributes(payload, { mode: "cancel" })
+    .then(afterWriteRefresh)
+    .catch(err => { console.error(err); alert(err.message||"Failed to cancel"); loading(""); });
+});
 
 function openModalForDate(jsDate){
+  state.mode = "create";
   state.clickedDate = new Date(jsDate.getFullYear(), jsDate.getMonth(), jsDate.getDate());
+  $("#modalTitle").textContent = "Add training session";
+  $("#saveSession").textContent = "Save";
   $("#fDateHint").textContent = "Date: " + state.clickedDate.toDateString();
   $("#fTitle").value=""; $("#fOperator").value=""; $("#fTrainer").value="";
   $("#fTopic").value=""; $("#fMachine").value="";
@@ -310,9 +367,32 @@ function openModalForDate(jsDate){
   overlay.style.display = "flex";
 }
 
-function onSaveSession(){
+function onCreateSession(){
   var base = state.clickedDate || new Date();
-  var payload = {
+  var payload = collectFormPayload(base);
+  var must = requiredChecks(payload);
+  if (must) { alert(must); return; }
+  loading("Saving…");
+  // CREATE → 8 attrs + Save_Button=false
+  writeAttributes(payload, { mode:"create" })
+    .then(function(){ overlay.style.display="none"; afterWriteRefresh(); })
+    .catch(function(e){ console.error(e); alert(e.message||"Failed to save"); loading(""); });
+}
+
+function onUpdateSession(){
+  var base = state.clickedDate || new Date();
+  var payload = collectFormPayload(base);
+  var must = requiredChecks(payload);
+  if (must) { alert(must); return; }
+  loading("Updating…");
+  // UPDATE → 8 attrs + Update_Buttton=true (NO Save_Button)
+  writeAttributes(payload, { mode:"update" })
+    .then(function(){ overlay.style.display="none"; afterWriteRefresh(); })
+    .catch(function(e){ console.error(e); alert(e.message||"Failed to update"); loading(""); });
+}
+
+function collectFormPayload(base){
+  return {
     Training_Title: $("#fTitle").value.trim(),
     Training_Operator_Name: $("#fOperator").value.trim(),
     Training_Start: mergeDateTime(base, $("#fTimeTo").value),   // Time To -> Start
@@ -322,34 +402,34 @@ function onSaveSession(){
     Training_Machine: $("#fMachine").value.trim(),
     Training_Status: "planned"
   };
-  var must = [
-    ["Title", payload.Training_Title],
-    ["Operator", payload.Training_Operator_Name],
-    ["Trainer Name", payload.Trainer_Name],
-    ["Training Topic", payload.Training_Topic],
-    ["Training Machine", payload.Training_Machine]
-  ];
-  for (var i=0;i<must.length;i++){ if(!must[i][1]){ alert("Please enter "+must[i][0]); return; } }
-  if (payload.Training_End <= payload.Training_Start){ alert("Time From must be after Time To."); return; }
+}
 
-  loading("Sending attributes…");
-  writeAttributesIndividually(payload)
-    .then(function(){
-      overlay.style.display = "none";
-      // Give the rule chain time to mirror to telemetry (and set Save_Button=true), then refresh.
-      setTimeout(function(){
-        if (state.lastRange){
-          loading("Refreshing…");
-          readRangeSessions(state.lastRange.start, state.lastRange.end).then(function(events){
-            state.calendar.removeAllEvents();
-            state.calendar.addEventSource(events);
-            $("#details").className="empty"; $("#details").textContent="Select a session on the calendar";
-            loading("Loaded "+events.length+" session(s)");
-          }).catch(function(e){ loading(e.message||"Failed to load"); });
-        } else { loading(""); }
-      }, 1200);
-    })
-    .catch(function(e){ console.error(e); alert(e.message||"Failed to save"); loading(""); });
+function requiredChecks(p){
+  var must = [
+    ["Title", p.Training_Title],
+    ["Operator", p.Training_Operator_Name],
+    ["Trainer Name", p.Trainer_Name],
+    ["Training Topic", p.Training_Topic],
+    ["Training Machine", p.Training_Machine]
+  ];
+  for (var i=0;i<must.length;i++){ if(!must[i][1]) return "Please enter "+must[i][0]; }
+  if (p.Training_End <= p.Training_Start) return "Time From must be after Time To.";
+  return "";
+}
+
+function afterWriteRefresh(){
+  setTimeout(function(){
+    if (state.lastRange){
+      loading("Refreshing…");
+      readRangeSessions(state.lastRange.start, state.lastRange.end).then(function(events){
+        state.calendar.removeAllEvents();
+        state.calendar.addEventSource(events);
+        $("#details").className="empty"; $("#details").textContent="Select a session on the calendar";
+        $("#sideActions").style.display="none";
+        loading("Loaded "+events.length+" session(s)");
+      }).catch(function(e){ loading(e.message||"Failed to load"); });
+    } else { loading(""); }
+  }, 1200);
 }
 
 /************ BOOT ************/
@@ -380,6 +460,7 @@ function startCalendar(){
           state.calendar.removeAllEvents();
           state.calendar.addEventSource(events);
           $("#details").className="empty"; $("#details").textContent="Select a session on the calendar";
+          $("#sideActions").style.display="none";
           loading("Loaded "+events.length+" session(s)");
         })
         .catch(function(err){
