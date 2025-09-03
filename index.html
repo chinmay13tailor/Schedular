@@ -90,7 +90,7 @@
   <div class="modal">
     <header>
       <div style="font-weight:900" id="modalTitle">Add training session</div>
-      <button class="btn" id="closeModal">Close</button>
+      <button class="btn" id="closeModal" type="button">Close</button>
     </header>
     <div class="body">
       <div class="row-full">
@@ -114,7 +114,7 @@
         <input id="fTimeFrom" class="input" type="time" value="11:00">
       </div>
 
-      <!-- NEW: Training Status -->
+      <!-- Status -->
       <div class="row-full">
         <label>Training Status</label>
         <select id="fStatus" class="input">
@@ -130,7 +130,7 @@
       <div class="row-full muted" id="fDateHint">Date: —</div>
     </div>
     <footer>
-      <button class="btn primary" id="saveSession">Save</button>
+      <button class="btn primary" id="saveSession" type="button">Save</button>
     </footer>
   </div>
 </div>
@@ -251,9 +251,6 @@ function readRangeSessions(rangeStart, rangeEnd){
 }
 
 /************ WRITE (attributes) ************/
-// opts.mode: "create" | "update" | "cancel"
-// - create: adds Save_Button=false
-// - update & cancel: adds Update_Buttton=true + Update_Timestamp (base ts)
 function writeAttributes(session, opts){
   if(!JWT) return Promise.reject(new Error("Missing JWT (?token=)"));
   var url = API_BASE + "/plugins/telemetry/DEVICE/" + DEVICE_ID + "/SERVER_SCOPE";
@@ -274,9 +271,13 @@ function writeAttributes(session, opts){
   } else if (opts && (opts.mode === "update" || opts.mode === "cancel")) {
     body[ATTR_UPDATE_FLAG] = true;
     if (session.Update_Timestamp) {
-      body.Update_Timestamp = session.Update_Timestamp; // pass base ts to rule chain
+      body.Update_Timestamp = session.Update_Timestamp;
+    } else {
+      console.warn("Update flow without Update_Timestamp (base ts).");
     }
   }
+
+  console.log("WRITE ATTRIBUTES", opts, body);
 
   return fetch(url, {
     method: "POST",
@@ -310,17 +311,17 @@ function showDetails(ev){
   $("#sideActions").style.display = "flex";
 }
 
-/************ MODAL (create & update) ************/
 var overlay = $("#overlay");
 $("#closeModal").addEventListener("click", function(){ overlay.style.display = "none"; });
 
 $("#saveSession").addEventListener("click", function(){
+  console.log("CLICK saveSession; mode=", state.mode);
   if (state.mode === "update") onUpdateSession();
   else onCreateSession();
 });
 
 $("#btnEdit").addEventListener("click", function(){
-  if (!state.selectedEvent) return;
+  if (!state.selectedEvent) { alert("Select a session first."); return; }
   var p = state.selectedEvent.extendedProps;
   state.mode = "update";
   $("#modalTitle").textContent = "Update training session";
@@ -336,14 +337,14 @@ $("#btnEdit").addEventListener("click", function(){
   $("#fMachine").value  = p.Training_Machine || "";
   $("#fTimeTo").value   = msToHHMM(p.Training_Start);
   $("#fTimeFrom").value = msToHHMM(p.Training_End);
-  $("#fStatus").value   = (p.Training_Status || "planned");   // NEW: prefill status
+  $("#fStatus").value   = (p.Training_Status || "planned");
   $("#fDateHint").textContent = "Date: " + state.clickedDate.toDateString();
 
   overlay.style.display = "flex";
 });
 
 $("#btnCancel").addEventListener("click", function(){
-  if (!state.selectedEvent) return;
+  if (!state.selectedEvent) { alert("Select a session first."); return; }
   if (!confirm("Cancel this training?")) return;
 
   var p = state.selectedEvent.extendedProps;
@@ -356,13 +357,14 @@ $("#btnCancel").addEventListener("click", function(){
     Training_Topic: p.Training_Topic || "",
     Training_Machine: p.Training_Machine || "",
     Training_Status: "cancelled",
-    Update_Timestamp: p.__ts              // include base ts for rule chain
+    Update_Timestamp: p.__ts
   };
 
   loading("Cancelling…");
+  disableSave(true);
   writeAttributes(payload, { mode: "cancel" })
     .then(afterWriteRefresh)
-    .catch(err => { console.error(err); alert(err.message||"Failed to cancel"); loading(""); });
+    .catch(err => { console.error(err); alert(err.message||"Failed to cancel"); loading(""); disableSave(false); });
 });
 
 function openModalForDate(jsDate){
@@ -374,7 +376,7 @@ function openModalForDate(jsDate){
   $("#fTitle").value=""; $("#fOperator").value=""; $("#fTrainer").value="";
   $("#fTopic").value=""; $("#fMachine").value="";
   $("#fTimeTo").value="09:00"; $("#fTimeFrom").value="11:00";
-  $("#fStatus").value="planned";                                  // NEW: default status
+  $("#fStatus").value="planned";
   overlay.style.display = "flex";
 }
 
@@ -384,37 +386,45 @@ function onCreateSession(){
   var must = requiredChecks(payload);
   if (must) { alert(must); return; }
   loading("Saving…");
+  disableSave(true);
   writeAttributes(payload, { mode:"create" })
     .then(function(){ overlay.style.display="none"; afterWriteRefresh(); })
-    .catch(function(e){ console.error(e); alert(e.message||"Failed to save"); loading(""); });
+    .catch(function(e){ console.error(e); alert(e.message||"Failed to save"); loading(""); disableSave(false); });
 }
 
 function onUpdateSession(){
+  if (!state.selectedEvent || !state.selectedEvent.extendedProps) {
+    alert("No session selected for update.");
+    return;
+  }
   var base = state.clickedDate || new Date();
   var payload = collectFormPayload(base);
-  // include base ts for rule-chain to target the right telemetry row
-  if (state.selectedEvent && state.selectedEvent.extendedProps.__ts) {
-    payload.Update_Timestamp = state.selectedEvent.extendedProps.__ts;
-  }
+
+  // MUST pass base ts so rule chain updates the correct record
+  var baseTs = state.selectedEvent.extendedProps.__ts;
+  if (!baseTs) { alert("Missing base timestamp for update. Please reselect the event."); return; }
+  payload.Update_Timestamp = baseTs;
 
   var must = requiredChecks(payload);
   if (must) { alert(must); return; }
+
   loading("Updating…");
+  disableSave(true);
   writeAttributes(payload, { mode:"update" })
     .then(function(){ overlay.style.display="none"; afterWriteRefresh(); })
-    .catch(function(e){ console.error(e); alert(e.message||"Failed to update"); loading(""); });
+    .catch(function(e){ console.error(e); alert(e.message||"Failed to update"); loading(""); disableSave(false); });
 }
 
 function collectFormPayload(base){
   return {
     Training_Title: $("#fTitle").value.trim(),
     Training_Operator_Name: $("#fOperator").value.trim(),
-    Training_Start: mergeDateTime(base, $("#fTimeTo").value),   // Time To -> Start
-    Training_End:   mergeDateTime(base, $("#fTimeFrom").value), // Time From -> End
+    Training_Start: mergeDateTime(base, $("#fTimeTo").value),
+    Training_End:   mergeDateTime(base, $("#fTimeFrom").value),
     Trainer_Name: $("#fTrainer").value.trim(),
     Training_Topic: $("#fTopic").value.trim(),
     Training_Machine: $("#fMachine").value.trim(),
-    Training_Status: $("#fStatus").value || "planned"           // NEW: from dropdown
+    Training_Status: $("#fStatus").value || "planned"
   };
 }
 
@@ -431,6 +441,10 @@ function requiredChecks(p){
   return "";
 }
 
+function disableSave(on){
+  $("#saveSession").disabled = !!on;
+}
+
 function afterWriteRefresh(){
   setTimeout(function(){
     if (state.lastRange){
@@ -440,9 +454,10 @@ function afterWriteRefresh(){
         state.calendar.addEventSource(events);
         $("#details").className="empty"; $("#details").textContent="Select a session on the calendar";
         $("#sideActions").style.display="none";
+        disableSave(false);
         loading("Loaded "+events.length+" session(s)");
-      }).catch(function(e){ loading(e.message||"Failed to load"); });
-    } else { loading(""); }
+      }).catch(function(e){ console.error(e); loading(e.message||"Failed to load"); disableSave(false); });
+    } else { disableSave(false); loading(""); }
   }, 1200);
 }
 
