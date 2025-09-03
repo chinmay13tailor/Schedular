@@ -3,12 +3,12 @@
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
-<title>PlantWiz • Training Calendar (Attr→RuleChain→Telemetry)</title>
+<title>PlantWiz • Training Calendar</title>
 
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.11/index.global.min.css">
 <style>
   :root{--ring:#e5e7eb;--bg:#fff;--text:#0f172a;--muted:#64748b;
-        --blue:#3b82f6;--green:#22c55e;--cyan:#06b6d4;--amber:#f59e0b;--red:#ef4444}
+        --blue:#3b82f6;--green:#22c55e;--cyan:#06b6d4;--red:#ef4444}
   *{box-sizing:border-box}
   body{margin:0;background:#fff;color:var(--text);font:14px/1.45 system-ui,-apple-system,Segoe UI,Roboto,Arial}
   .app{display:grid;grid-template-columns:1fr 320px;gap:16px;min-height:100vh;padding:16px}
@@ -37,16 +37,11 @@
   .fc-daygrid-day-number{color:#64748b}
 
   .event{border-radius:10px;border:0;padding:6px 8px;color:#fff;font-weight:700;box-shadow:0 1px 0 rgba(0,0,0,.08),0 8px 16px -12px rgba(0,0,0,.25)}
-  .status-planned{background:var(--blue)} .status-live{background:var(--green)}
-  .status-completed{background:var(--cyan)} .status-cancelled{background:var(--red)}
-  .status-pending_approval{background:var(--amber)}
+  .status-planned{background:var(--blue)}
+  .status-compleated{background:var(--cyan)}
+  .status-cancelled{background:var(--red)}
   .sub{display:block;font-weight:600;opacity:.95}
   .tiny{display:block;font-weight:600;opacity:.8;font-size:12px}
-  .badge{display:inline-block;border-radius:999px;padding:3px 8px;font-size:11px;color:#fff;margin-left:6px}
-  .b-planned{background:var(--blue)} .b-live{background:var(--green)}
-  .b-completed{background:var(--cyan)} .b-cancelled{background:var(--red)}
-  .b-pending_approval{background:var(--amber)}
-  .b-saved{background:#16a34a} .b-pending{background:var(--amber)}
 
   .muted{color:var(--muted)} #loading{font-size:12px;color:#64748b;margin-left:8px}
   .success{color:#16a34a}.err{color:#dc2626;font-weight:700}
@@ -122,17 +117,15 @@
         <input id="fMachine" class="input" type="text" placeholder="e.g., LATHE-02">
       </div>
 
-      <!-- Training Status -->
+      <!-- Training Status (only the 3 allowed) -->
       <div class="row-full">
         <label>Training Status</label>
         <select id="fStatus" class="input">
-          <option value="planned">planned</option>
-          <option value="live">live</option>
-          <option value="completed">completed</option>
-          <option value="cancelled">cancelled</option>
-          <option value="pending_approval">pending_approval</option>
+          <option value="Planned">Planned</option>
+          <option value="Compleated">Compleated</option>
+          <option value="Cancelled">Cancelled</option>
         </select>
-        <div class="muted" style="margin-top:6px">Choose <strong>planned</strong> to reactivate a cancelled session.</div>
+        <div class="muted" style="margin-top:6px">Pick <strong>Planned</strong> to reactivate a cancelled session.</div>
       </div>
 
       <div class="row-full muted" id="fDateHint">Date: —</div>
@@ -151,14 +144,14 @@ var API_BASE  = ORIGIN + "/api";
 var DEVICE_ID = "991cf500-661a-11f0-90f1-775fee303094";
 var JWT       = new URLSearchParams(location.search).get("token")  || "";
 
-// Flags
+// Flags (used by rule-chain, not shown in UI)
 var ATTR_SAVE_FLAG    = "Save_Button";       // only on CREATE
 var ATTR_UPDATE_FLAG  = "Update_Buttton";    // exact spelling, on UPDATE/CANCEL
 
-// Telemetry keys we read
+// Telemetry keys we read (no Save_Button here)
 var KEYS = [
   "Training_Title","Training_Operator_Name","Training_Start","Training_End",
-  "Trainer_Name","Training_Topic","Training_Machine","Training_Status","Save_Button"
+  "Trainer_Name","Training_Topic","Training_Machine","Training_Status"
 ];
 
 /************ HELPERS ************/
@@ -180,16 +173,10 @@ function escapeHtml(s){
   return String(s||"").replace(/[&<>\"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
 }
 function colorByStatus(s){
-  s = String(s||"planned").toLowerCase();
-  if (s==="live") return "status-live";
-  if (s==="completed") return "status-completed";
-  if (s==="cancelled") return "status-cancelled";
-  if (s==="pending_approval") return "status-pending_approval";
-  return "status-planned";
-}
-function badgeSaved(p){
-  var saved = String(p.Save_Button).toLowerCase() === "true" || p.Save_Button === true;
-  return saved ? '<span class="badge b-saved">Saved</span>' : '<span class="badge b-pending">Pending</span>';
+  var v = String(s||"Planned").toLowerCase();
+  if (v==="cancelled") return "status-cancelled";
+  if (v==="compleated") return "status-compleated";
+  return "status-planned"; // Planned default
 }
 function eventContent(arg){
   var p = arg.event.extendedProps;
@@ -198,7 +185,7 @@ function eventContent(arg){
   var trainer = p.Trainer_Name ? (" – " + escapeHtml(p.Trainer_Name)) : "";
   var title = arg.event.title || "Training";
   return { html:
-    '<span class="sub">'+time+machine+badgeSaved(p)+'</span>'+
+    '<span class="sub">'+time+machine+'</span>'+
     '<span>'+escapeHtml(title)+trainer+'</span>'+
     '<span class="tiny">'+escapeHtml(p.Training_Operator_Name || "")+'</span>'
   };
@@ -245,8 +232,7 @@ function readRangeSessions(rangeStart, rangeEnd){
             Trainer_Name: r.Trainer_Name || "",
             Training_Topic: r.Training_Topic || "",
             Training_Machine: r.Training_Machine || "",
-            Training_Status: r.Training_Status || "planned",
-            Save_Button: r.Save_Button,
+            Training_Status: r.Training_Status || "Planned",
             __ts: r.ts
           }
         });
@@ -269,11 +255,11 @@ function writeAttributes(session, opts){
     Trainer_Name:           session.Trainer_Name,
     Training_Topic:         session.Training_Topic,
     Training_Machine:       session.Training_Machine,
-    Training_Status:        session.Training_Status || "planned"
+    Training_Status:        session.Training_Status || "Planned"
   };
 
   if (opts && opts.mode === "create") {
-    body[ATTR_SAVE_FLAG] = false;
+    body[ATTR_SAVE_FLAG] = false; // used by your rule-chain; not shown
   } else if (opts && (opts.mode === "update" || opts.mode === "cancel")) {
     body[ATTR_UPDATE_FLAG] = true;
     if (session.Update_Timestamp) body.Update_Timestamp = session.Update_Timestamp;
@@ -291,14 +277,12 @@ function showDetails(ev){
   state.selectedEvent = ev;
   var p = ev.extendedProps;
   function fmt(v){ return v ? new Date(Number(v)).toLocaleString() : "-"; }
-  var badge = "badge b-" + String(p.Training_Status || "planned").replace(" ","_");
-  var saved = (String(p.Save_Button).toLowerCase()==="true" || p.Save_Button===true) ? 
-              '<span class="badge b-saved">Saved</span>' : '<span class="badge b-pending">Pending</span>';
+  var badgeCls = "badge b-" + colorByStatus(p.Training_Status).replace("status-","");
   $("#details").className = "";
   $("#details").innerHTML =
     '<div class="kpi">'+
-      '<span>Base ts</span><span>'+escapeHtml(String(p.__ts||"-"))+' '+saved+'</span>'+
-      '<span>Status</span><span><span class="'+badge+'">'+escapeHtml(p.Training_Status||"planned")+'</span></span>'+
+      '<span>Base ts</span><span>'+escapeHtml(String(p.__ts||"-"))+'</span>'+
+      '<span>Status</span><span><span class="'+badgeCls+'">'+escapeHtml(p.Training_Status||"Planned")+'</span></span>'+
       '<span>Title</span><span>'+escapeHtml(p.Training_Title||"-")+'</span>'+
       '<span>Topic</span><span>'+escapeHtml(p.Training_Topic||"-")+'</span>'+
       '<span>Operator</span><span>'+escapeHtml(p.Training_Operator_Name||"-")+'</span>'+
@@ -311,6 +295,7 @@ function showDetails(ev){
   $("#sideActions").style.display = "flex";
 }
 
+/************ MODAL + ACTIONS ************/
 var overlay = $("#overlay");
 $("#closeModal").addEventListener("click", function(){ overlay.style.display = "none"; });
 
@@ -336,7 +321,7 @@ $("#btnEdit").addEventListener("click", function(){
   $("#fMachine").value  = p.Training_Machine || "";
   $("#fTimeTo").value   = msToHHMM(p.Training_Start);
   $("#fTimeFrom").value = msToHHMM(p.Training_End);
-  $("#fStatus").value   = (p.Training_Status || "planned");
+  $("#fStatus").value   = p.Training_Status || "Planned";
   $("#fDateHint").textContent = "Date: " + state.clickedDate.toDateString();
 
   overlay.style.display = "flex";
@@ -355,7 +340,7 @@ $("#btnCancel").addEventListener("click", function(){
     Trainer_Name: p.Trainer_Name || "",
     Training_Topic: p.Training_Topic || "",
     Training_Machine: p.Training_Machine || "",
-    Training_Status: "cancelled",
+    Training_Status: "Cancelled",
     Update_Timestamp: p.__ts
   };
 
@@ -374,7 +359,7 @@ function openModalForDate(jsDate){
   $("#fTitle").value=""; $("#fOperator").value=""; $("#fTrainer").value="";
   $("#fTopic").value=""; $("#fMachine").value="";
   $("#fTimeTo").value="09:00"; $("#fTimeFrom").value="11:00";
-  $("#fStatus").value="planned";
+  $("#fStatus").value="Planned";
   overlay.style.display = "flex";
 }
 
@@ -418,7 +403,7 @@ function collectFormPayload(base){
     Trainer_Name: $("#fTrainer").value.trim(),
     Training_Topic: $("#fTopic").value.trim(),
     Training_Machine: $("#fMachine").value.trim(),
-    Training_Status: $("#fStatus").value || "planned"
+    Training_Status: $("#fStatus").value || "Planned"
   };
 }
 
