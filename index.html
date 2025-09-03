@@ -10,7 +10,7 @@
   :root{--ring:#e5e7eb;--bg:#fff;--text:#0f172a;--muted:#64748b;
         --blue:#3b82f6;--green:#22c55e;--cyan:#06b6d4;--amber:#f59e0b;--red:#ef4444}
   *{box-sizing:border-box}
-  body{margin:0;background:#fff;color:#0f172a;font:14px/1.45 system-ui,-apple-system,Segoe UI,Roboto,Arial}
+  body{margin:0;background:#fff;color:var(--text);font:14px/1.45 system-ui,-apple-system,Segoe UI,Roboto,Arial}
   .app{display:grid;grid-template-columns:1fr 320px;gap:16px;min-height:100vh;padding:16px}
   header{grid-column:1/-1;display:flex;gap:10px;align-items:center;border:1px solid var(--ring);border-radius:12px;background:#fff;padding:10px 12px}
   .brand{font-weight:800}.spacer{flex:1}
@@ -48,7 +48,7 @@
   .b-pending_approval{background:var(--amber)}
   .b-saved{background:#16a34a} .b-pending{background:var(--amber)}
 
-  .muted{color:#64748b} #loading{font-size:12px;color:#64748b;margin-left:8px}
+  .muted{color:var(--muted)} #loading{font-size:12px;color:#64748b;margin-left:8px}
   .success{color:#16a34a}.err{color:#dc2626;font-weight:700}
 
   .overlay{position:fixed;inset:0;background:rgba(15,23,42,.35);display:none;align-items:center;justify-content:center;z-index:50}
@@ -75,8 +75,8 @@
     <h3 class="h6">Session details</h3>
     <div id="details" class="empty">Select a session on the calendar</div>
     <div class="side-actions" id="sideActions" style="display:none">
-      <button class="btn danger"  id="btnCancel">Cancel training</button>
-      <button class="btn ghost"   id="btnEdit">Update</button>
+      <button class="btn danger"  id="btnCancel" type="button">Cancel training</button>
+      <button class="btn ghost"   id="btnEdit"   type="button">Update</button>
     </div>
   </aside>
 
@@ -113,8 +113,16 @@
         <label>Time From</label>
         <input id="fTimeFrom" class="input" type="time" value="11:00">
       </div>
+      <div class="row-full">
+        <label>Training Topic</label>
+        <input id="fTopic" class="input" type="text" placeholder="Short description">
+      </div>
+      <div class="row-full">
+        <label>Training Machine</label>
+        <input id="fMachine" class="input" type="text" placeholder="e.g., LATHE-02">
+      </div>
 
-      <!-- Status -->
+      <!-- Training Status -->
       <div class="row-full">
         <label>Training Status</label>
         <select id="fStatus" class="input">
@@ -147,7 +155,7 @@ var JWT       = new URLSearchParams(location.search).get("token")  || "";
 var ATTR_SAVE_FLAG    = "Save_Button";       // only on CREATE
 var ATTR_UPDATE_FLAG  = "Update_Buttton";    // exact spelling, on UPDATE/CANCEL
 
-// Telemetry keys we read to render
+// Telemetry keys we read
 var KEYS = [
   "Training_Title","Training_Operator_Name","Training_Start","Training_End",
   "Trainer_Name","Training_Topic","Training_Machine","Training_Status","Save_Button"
@@ -166,9 +174,7 @@ function mergeDateTime(baseDate, hhmm){
 }
 function msToHHMM(ms){
   var d = new Date(ms);
-  var hh = String(d.getHours()).padStart(2,'0');
-  var mm = String(d.getMinutes()).padStart(2,'0');
-  return hh + ":" + mm;
+  return String(d.getHours()).padStart(2,'0') + ":" + String(d.getMinutes()).padStart(2,'0');
 }
 function escapeHtml(s){
   return String(s||"").replace(/[&<>\"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
@@ -209,7 +215,7 @@ function readRangeSessions(rangeStart, rangeEnd){
   return fetch(url, { headers: { "X-Authorization": "Bearer " + JWT } })
     .then(res => res.ok ? res.json() : res.text().then(t => { throw new Error("Timeseries read failed: "+t); }))
     .then(tsObj => {
-      var map = {}; // ts -> row
+      var map = {};
       Object.keys(tsObj || {}).forEach(k => {
         (tsObj[k]||[]).forEach(p => {
           var ts = Number(p.ts);
@@ -270,14 +276,8 @@ function writeAttributes(session, opts){
     body[ATTR_SAVE_FLAG] = false;
   } else if (opts && (opts.mode === "update" || opts.mode === "cancel")) {
     body[ATTR_UPDATE_FLAG] = true;
-    if (session.Update_Timestamp) {
-      body.Update_Timestamp = session.Update_Timestamp;
-    } else {
-      console.warn("Update flow without Update_Timestamp (base ts).");
-    }
+    if (session.Update_Timestamp) body.Update_Timestamp = session.Update_Timestamp;
   }
-
-  console.log("WRITE ATTRIBUTES", opts, body);
 
   return fetch(url, {
     method: "POST",
@@ -315,7 +315,6 @@ var overlay = $("#overlay");
 $("#closeModal").addEventListener("click", function(){ overlay.style.display = "none"; });
 
 $("#saveSession").addEventListener("click", function(){
-  console.log("CLICK saveSession; mode=", state.mode);
   if (state.mode === "update") onUpdateSession();
   else onCreateSession();
 });
@@ -361,10 +360,9 @@ $("#btnCancel").addEventListener("click", function(){
   };
 
   loading("Cancelling…");
-  disableSave(true);
   writeAttributes(payload, { mode: "cancel" })
     .then(afterWriteRefresh)
-    .catch(err => { console.error(err); alert(err.message||"Failed to cancel"); loading(""); disableSave(false); });
+    .catch(err => { console.error(err); alert(err.message||"Failed to cancel"); loading(""); });
 });
 
 function openModalForDate(jsDate){
@@ -386,21 +384,18 @@ function onCreateSession(){
   var must = requiredChecks(payload);
   if (must) { alert(must); return; }
   loading("Saving…");
-  disableSave(true);
   writeAttributes(payload, { mode:"create" })
     .then(function(){ overlay.style.display="none"; afterWriteRefresh(); })
-    .catch(function(e){ console.error(e); alert(e.message||"Failed to save"); loading(""); disableSave(false); });
+    .catch(function(e){ console.error(e); alert(e.message||"Failed to save"); loading(""); });
 }
 
 function onUpdateSession(){
   if (!state.selectedEvent || !state.selectedEvent.extendedProps) {
-    alert("No session selected for update.");
-    return;
+    alert("No session selected for update."); return;
   }
   var base = state.clickedDate || new Date();
   var payload = collectFormPayload(base);
 
-  // MUST pass base ts so rule chain updates the correct record
   var baseTs = state.selectedEvent.extendedProps.__ts;
   if (!baseTs) { alert("Missing base timestamp for update. Please reselect the event."); return; }
   payload.Update_Timestamp = baseTs;
@@ -409,10 +404,9 @@ function onUpdateSession(){
   if (must) { alert(must); return; }
 
   loading("Updating…");
-  disableSave(true);
   writeAttributes(payload, { mode:"update" })
     .then(function(){ overlay.style.display="none"; afterWriteRefresh(); })
-    .catch(function(e){ console.error(e); alert(e.message||"Failed to update"); loading(""); disableSave(false); });
+    .catch(function(e){ console.error(e); alert(e.message||"Failed to update"); loading(""); });
 }
 
 function collectFormPayload(base){
@@ -441,10 +435,6 @@ function requiredChecks(p){
   return "";
 }
 
-function disableSave(on){
-  $("#saveSession").disabled = !!on;
-}
-
 function afterWriteRefresh(){
   setTimeout(function(){
     if (state.lastRange){
@@ -454,10 +444,9 @@ function afterWriteRefresh(){
         state.calendar.addEventSource(events);
         $("#details").className="empty"; $("#details").textContent="Select a session on the calendar";
         $("#sideActions").style.display="none";
-        disableSave(false);
         loading("Loaded "+events.length+" session(s)");
-      }).catch(function(e){ console.error(e); loading(e.message||"Failed to load"); disableSave(false); });
-    } else { disableSave(false); loading(""); }
+      }).catch(function(e){ console.error(e); loading(e.message||"Failed to load"); });
+    } else { loading(""); }
   }, 1200);
 }
 
