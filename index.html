@@ -5,26 +5,20 @@
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
 <title>PlantWiz • Training Calendar</title>
 
-<!-- FullCalendar (primary CDN) -->
-<link id="fc-css" rel="stylesheet"
-      href="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.11/index.global.min.css">
-<script id="fc-js" src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.11/index.global.min.js"></script>
-
+<!-- FullCalendar (single CDN) -->
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.11/index.global.min.css">
 <style>
-  :root{
-    --ring:#e5e7eb; --bg:#ffffff; --text:#0f172a; --muted:#64748b;
-    --blue:#3b82f6; --green:#22c55e; --cyan:#06b6d4; --amber:#f59e0b; --red:#ef4444;
-  }
+  :root{--ring:#e5e7eb;--bg:#ffffff;--text:#0f172a;--muted:#64748b;
+        --blue:#3b82f6;--green:#22c55e;--cyan:#06b6d4;--amber:#f59e0b;--red:#ef4444;}
   *{box-sizing:border-box}
   body{margin:0;background:var(--bg);color:var(--text);font:14px/1.45 system-ui,-apple-system,Segoe UI,Roboto,Arial}
   .app{display:grid;grid-template-columns:1fr 320px;gap:16px;min-height:100vh;padding:16px}
   header{grid-column:1/-1;display:flex;gap:10px;align-items:center;border:1px solid var(--ring);border-radius:12px;background:#fff;padding:10px 12px}
-  .brand{font-weight:800}
-  .spacer{flex:1}
-  .btn,.input,select{border:1px solid var(--ring);border-radius:10px;background:#fff;padding:8px 10px}
+  .brand{font-weight:800}.spacer{flex:1}
+  .btn,.input{border:1px solid var(--ring);border-radius:10px;background:#fff;padding:8px 10px}
   .btn{cursor:pointer;font-weight:800}
   .card{border:1px solid var(--ring);border-radius:12px;background:#fff;overflow:hidden}
-  #calendar{min-height:560px;} /* ensure visible space even before render */
+  #calendar{min-height:560px}
   .side{border:1px solid var(--ring);border-radius:12px;background:#fff;padding:14px;position:sticky;top:16px;height:fit-content}
   .empty{padding:12px;text-align:center;color:#64748b;background:#f8fafc;border-radius:10px}
   .h6{margin:0 0 10px;font-weight:900}
@@ -33,30 +27,24 @@
   footer{grid-column:1/-1;color:#64748b;font-size:12px;text-align:center}
   @media(max-width:1024px){.app{grid-template-columns:1fr}.side{position:static}}
 
-  /* FC cosmetics */
   .fc .fc-toolbar{padding:10px}
   .fc .fc-toolbar-title{font-size:16px;font-weight:800}
   .fc .fc-button{background:#fff;border:1px solid var(--ring);color:#0f172a;border-radius:10px;padding:6px 10px}
   .fc-theme-standard td,.fc-theme-standard th{border-color:var(--ring)}
   .fc-daygrid-day-number{color:#64748b}
 
-  /* Event chip */
-  .event{border-radius:10px;border:0;padding:6px 8px;color:#fff;font-weight:700;
-         box-shadow:0 1px 0 rgba(0,0,0,.08), 0 8px 16px -12px rgba(0,0,0,.25)}
-  .status-planned{background:var(--blue)}
-  .status-live{background:var(--green)}
-  .status-completed{background:var(--cyan)}
-  .status-cancelled{background:var(--red)}
+  .event{border-radius:10px;border:0;padding:6px 8px;color:#fff;font-weight:700;box-shadow:0 1px 0 rgba(0,0,0,.08),0 8px 16px -12px rgba(0,0,0,.25)}
+  .status-planned{background:var(--blue)} .status-live{background:var(--green)}
+  .status-completed{background:var(--cyan)} .status-cancelled{background:var(--red)}
   .status-pending_approval{background:var(--amber)}
   .sub{display:block;font-weight:600;opacity:.95}
   .tiny{display:block;font-weight:600;opacity:.8;font-size:12px}
   .badge{display:inline-block;border-radius:999px;padding:3px 8px;font-size:12px;color:#fff}
-  .b-planned{background:var(--blue)}.b-live{background:var(--green)}.b-completed{background:var(--cyan)}
-  .b-cancelled{background:var(--red)}.b-pending_approval{background:var(--amber)}
-  .muted{color:#64748b}
-  #loading{font-size:12px;color:#64748b;margin-left:8px}
+  .b-planned{background:var(--blue)} .b-live{background:var(--green)}
+  .b-completed{background:var(--cyan)} .b-cancelled{background:var(--red)}
+  .b-pending_approval{background:var(--amber)}
+  .muted{color:var(--muted)} #loading{font-size:12px;color:#64748b;margin-left:8px}
 
-  /* Modal */
   .overlay{position:fixed;inset:0;background:rgba(15,23,42,.35);display:none;align-items:center;justify-content:center;z-index:50}
   .modal{width:min(520px,92vw);background:#fff;border:1px solid var(--ring);border-radius:14px;box-shadow:0 24px 48px rgba(0,0,0,.18)}
   .modal header{display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid var(--ring);padding:12px 14px;border-radius:14px 14px 0 0}
@@ -66,7 +54,6 @@
   .modal footer{display:flex;gap:10px;justify-content:flex-end;border-top:1px solid var(--ring);padding:10px 14px;border-radius:0 0 14px 14px}
   .danger{background:#fff;border:1px solid var(--red);color:#dc2626}
   .primary{background:linear-gradient(#3b82f6,#2563eb);color:#fff;border:0}
-  .err{color:#dc2626;font-weight:700}
 </style>
 </head>
 <body>
@@ -85,12 +72,11 @@
   </aside>
 
   <footer>
-    Stored under SERVER attributes as <code>TrainCal_YYYY-MM-DD</code> (JSON array).
-    Keys: Training_Title, Training_Operator_Name, Training_Start, Training_End, Trainer_Name, Training_Topic, Training_Machine, Training_Status
+    Stored as SERVER attributes <code>TrainCal_YYYY-MM-DD</code> (JSON array). Keys: Training_Title, Training_Operator_Name, Training_Start, Training_End, Trainer_Name, Training_Topic, Training_Machine, Training_Status
   </footer>
 </div>
 
-<!-- Create Session Modal -->
+<!-- Modal -->
 <div class="overlay" id="overlay">
   <div class="modal">
     <header>
@@ -100,31 +86,31 @@
     <div class="body">
       <div class="row-full">
         <label>Title</label>
-        <input id="fTitle" class="input" type="text" placeholder="e.g., Operational Safety"/>
+        <input id="fTitle" class="input" type="text" placeholder="e.g., Operational Safety">
       </div>
       <div>
         <label>Operator</label>
-        <input id="fOperator" class="input" type="text" placeholder="Operator name"/>
+        <input id="fOperator" class="input" type="text" placeholder="Operator name">
       </div>
       <div>
         <label>Trainer Name</label>
-        <input id="fTrainer" class="input" type="text" placeholder="Trainer name"/>
+        <input id="fTrainer" class="input" type="text" placeholder="Trainer name">
       </div>
       <div>
         <label>Time To</label>
-        <input id="fTimeTo" class="input" type="time" value="09:00"/>
+        <input id="fTimeTo" class="input" type="time" value="09:00">
       </div>
       <div>
         <label>Time From</label>
-        <input id="fTimeFrom" class="input" type="time" value="11:00"/>
+        <input id="fTimeFrom" class="input" type="time" value="11:00">
       </div>
       <div class="row-full">
         <label>Training Topic</label>
-        <input id="fTopic" class="input" type="text" placeholder="Short description"/>
+        <input id="fTopic" class="input" type="text" placeholder="Short description">
       </div>
       <div class="row-full">
         <label>Training Machine</label>
-        <input id="fMachine" class="input" type="text" placeholder="e.g., LATHE-02"/>
+        <input id="fMachine" class="input" type="text" placeholder="e.g., LATHE-02">
       </div>
       <div class="row-full muted" id="fDateHint">Date: —</div>
     </div>
@@ -134,198 +120,170 @@
   </div>
 </div>
 
+<!-- FullCalendar JS at the end to avoid parse issues -->
+<script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.11/index.global.min.js"></script>
 <script>
-/* =======================
-   Robust FullCalendar loader (fallback to unpkg if needed)
-   ======================= */
-async function ensureFullCalendar(){
-  if (window.FullCalendar) return;
-  // if primary CDN failed, try unpkg
-  const cssOk = !!document.getElementById('fc-css');
-  const jsOk  = !!document.getElementById('fc-js');
-  if (!cssOk || !jsOk) {
-    // unlikely in static HTML, but continue
-  }
-  // inject fallback only if not available after a brief tick
-  await new Promise(r=>setTimeout(r, 150));
-  if (window.FullCalendar) return;
-  const fallbackCss = document.createElement('link');
-  fallbackCss.rel = 'stylesheet';
-  fallbackCss.href = 'https://unpkg.com/fullcalendar@6.1.11/index.global.min.css';
-  document.head.appendChild(fallbackCss);
+/************ CONFIG ************/
+var ORIGIN    = "https://plantwiz.pimateck.in";
+var API_BASE  = ORIGIN + "/api";
+var DEVICE_ID = "991cf500-661a-11f0-90f1-775fee303094";
+var JWT       = new URLSearchParams(location.search).get("token") || "";
 
-  const fallbackJs = document.createElement('script');
-  fallbackJs.src = 'https://unpkg.com/fullcalendar@6.1.11/index.global.min.js';
-  document.head.appendChild(fallbackJs);
-
-  // wait up to 5s
-  const start = performance.now();
-  while(!window.FullCalendar && performance.now()-start < 5000){
-    await new Promise(r=>setTimeout(r,100));
-  }
-  if (!window.FullCalendar){
-    throw new Error("Failed to load FullCalendar (both CDNs). Check network/CSP.");
-  }
-}
-
-/* =======================
-   CONFIG
-   ======================= */
-const ORIGIN    = "https://plantwiz.pimateck.in";
-const API_BASE  = `${ORIGIN}/api`;
-const DEVICE_ID = "991cf500-661a-11f0-90f1-775fee303094";
-const JWT       = new URLSearchParams(location.search).get("token") || ""; // injected by TB widget
-
-/* =======================
-   HELPERS & STATE
-   ======================= */
-const $ = s => document.querySelector(s);
-const loading = (t)=> $("#loading").textContent = t || "";
-const state = { calendar: null, clickedDate: null, lastRange: null };
+/************ HELPERS ************/
+function $(s){ return document.querySelector(s); }
+function loading(t){ $("#loading").textContent = t || ""; }
+var state = { calendar:null, clickedDate:null, lastRange:null };
 
 function mergeDateTime(baseDate, hhmm){
-  const [h,m] = String(hhmm||"00:00").split(":").map(x=>parseInt(x||"0",10));
-  const d = new Date(baseDate); d.setHours(h||0, m||0, 0, 0);
+  var parts = String(hhmm||"00:00").split(":");
+  var h = parseInt(parts[0]||"0",10), m = parseInt(parts[1]||"0",10);
+  var d = new Date(baseDate);
+  d.setHours(h||0, m||0, 0, 0);
   return d.getTime();
 }
 function dayKey(d){
-  const y=d.getFullYear(), m=String(d.getMonth()+1).padStart(2,'0'), da=String(d.getDate()).padStart(2,'0');
-  return `TrainCal_${y}-${m}-${da}`;
+  var y=d.getFullYear(), m=('0'+(d.getMonth()+1)).slice(-2), da=('0'+d.getDate()).slice(-2);
+  return "TrainCal_"+y+"-"+m+"-"+da;
 }
-function escapeHtml(s){ return String(s||"").replace(/[&<>"']/g, m=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[m]); }
+function escapeHtml(s){
+  return String(s||"").replace(/[&<>\"']/g, function(m){
+    return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m];
+  });
+}
 function colorByStatus(s){
-  switch(String(s||"planned").toLowerCase()){
-    case "live": return "status-live";
-    case "completed": return "status-completed";
-    case "cancelled": return "status-cancelled";
-    case "pending_approval": return "status-pending_approval";
-    default: return "status-planned";
-  }
+  s = String(s||"planned").toLowerCase();
+  if (s==="live") return "status-live";
+  if (s==="completed") return "status-completed";
+  if (s==="cancelled") return "status-cancelled";
+  if (s==="pending_approval") return "status-pending_approval";
+  return "status-planned";
 }
 function eventContent(arg){
-  const p = arg.event.extendedProps;
-  const time = arg.timeText || "";
-  const machine = p.Training_Machine ? ` • ${escapeHtml(p.Training_Machine)}` : "";
-  const trainer = p.Trainer_Name ? ` – ${escapeHtml(p.Trainer_Name)}` : "";
-  const title = arg.event.title || "Training";
-  return { html: `
-    <span class="sub">${time}${machine}</span>
-    <span>${escapeHtml(title)}${trainer}</span>
-    <span class="tiny">${escapeHtml(p.Training_Operator_Name || "")}</span>
-  `};
+  var p = arg.event.extendedProps;
+  var time = arg.timeText || "";
+  var machine = p.Training_Machine ? (" • " + escapeHtml(p.Training_Machine)) : "";
+  var trainer = p.Trainer_Name ? (" – " + escapeHtml(p.Trainer_Name)) : "";
+  var title = arg.event.title || "Training";
+  return { html:
+    '<span class="sub">'+time+machine+'</span>'+
+    '<span>'+escapeHtml(title)+trainer+'</span>'+
+    '<span class="tiny">'+escapeHtml(p.Training_Operator_Name || "")+'</span>'
+  };
 }
 
-/* =======================
-   SERVER ATTRIBUTES (JWT)
-   ======================= */
-async function readDaySessions(dateObj){
-  if(!JWT) throw new Error("Missing JWT (?token=) in URL.");
-  const key = dayKey(dateObj);
-  const url = `${API_BASE}/plugins/telemetry/DEVICE/${DEVICE_ID}/values/attributes/SERVER_SCOPE?keys=${encodeURIComponent(key)}`;
-  const res = await fetch(url, { headers: { "X-Authorization": `Bearer ${JWT}` } });
-  if (!res.ok){ const t=await res.text().catch(()=>res.statusText); throw new Error(`Read failed: ${t}`); }
-  const json = await res.json();
-  const arr = json[key] || [];
-  if (!arr.length) return [];
-  const v = arr[0]?.value;
-  try { return v ? JSON.parse(v) : []; } catch { return []; }
+/************ SERVER ATTR (JWT) ************/
+function readDaySessions(dateObj){
+  if(!JWT) return Promise.reject(new Error("Missing JWT (?token=)"));
+  var key = dayKey(dateObj);
+  var url = API_BASE + "/plugins/telemetry/DEVICE/" + DEVICE_ID + "/values/attributes/SERVER_SCOPE?keys=" + encodeURIComponent(key);
+  return fetch(url, { headers: { "X-Authorization": "Bearer " + JWT } })
+    .then(function(res){
+      if(!res.ok) return res.text().then(function(t){ throw new Error("Read failed: "+t); });
+      return res.json();
+    })
+    .then(function(json){
+      var arr = json[key] || [];
+      if(!arr.length) return [];
+      var v = arr[0] && arr[0].value;
+      try { return v ? JSON.parse(v) : []; } catch(e){ return []; }
+    });
 }
 
-async function saveDaySession(dateObj, sessionObj){
-  const key = dayKey(dateObj);
-  const existing = await readDaySessions(dateObj);
-  existing.push(sessionObj);
-  const writeUrl = `${API_BASE}/plugins/telemetry/DEVICE/${DEVICE_ID}/SERVER_SCOPE`;
-  const payload  = { [key]: JSON.stringify(existing) };
-  const res = await fetch(writeUrl, {
-    method: "POST",
-    headers: {
-      "X-Authorization": `Bearer ${JWT}`,
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify(payload)
+function saveDaySession(dateObj, sessionObj){
+  var key = dayKey(dateObj);
+  return readDaySessions(dateObj).then(function(existing){
+    existing.push(sessionObj);
+    var writeUrl = API_BASE + "/plugins/telemetry/DEVICE/" + DEVICE_ID + "/SERVER_SCOPE";
+    var payload = {}; payload[key] = JSON.stringify(existing);
+    return fetch(writeUrl, {
+      method: "POST",
+      headers: { "X-Authorization": "Bearer " + JWT, "Content-Type": "application/json" },
+      body: JSON.stringify(payload)
+    }).then(function(res){
+      if(!res.ok) return res.text().then(function(t){ throw new Error("Write failed: "+t); });
+    });
   });
-  if (!res.ok){ const t=await res.text().catch(()=>res.statusText); throw new Error(`Write failed: ${t}`); }
 }
 
-async function readRangeSessions(rangeStart, rangeEnd){
-  if(!JWT) throw new Error("Missing JWT (?token=) in URL.");
-  const keys = [];
-  const d = new Date(rangeStart);
+function readRangeSessions(rangeStart, rangeEnd){
+  if(!JWT) return Promise.reject(new Error("Missing JWT (?token=)"));
+  var keys = [], d = new Date(rangeStart.getTime());
   while (d < rangeEnd){
     keys.push(dayKey(d));
     d.setDate(d.getDate()+1);
   }
-  if (!keys.length) return [];
-  const url = `${API_BASE}/plugins/telemetry/DEVICE/${DEVICE_ID}/values/attributes/SERVER_SCOPE?keys=${encodeURIComponent(keys.join(','))}`;
-  const res = await fetch(url, { headers: { "X-Authorization": `Bearer ${JWT}` } });
-  if (!res.ok){ const t=await res.text().catch(()=>res.statusText); throw new Error(`Month read failed: ${t}`); }
-  const json = await res.json();
-  const out = [];
-  keys.forEach(k=>{
-    const arr = json[k] || [];
-    if (!arr.length) return;
-    const raw = arr[0]?.value;
-    if (!raw) return;
-    let items = [];
-    try { items = JSON.parse(raw) || []; } catch {}
-    items.forEach((s, idx) => {
-      if (!s.Training_Start || !s.Training_End) return;
-      out.push({
-        id: `${k}#${idx}`,
-        title: s.Training_Title || s.Training_Topic || "Training",
-        start: new Date(Number(s.Training_Start)),
-        end:   new Date(Number(s.Training_End)),
-        classNames: ["event", colorByStatus(s.Training_Status)],
-        extendedProps: { __storeKey:k, __index:idx, ...s }
+  if(!keys.length) return Promise.resolve([]);
+  var url = API_BASE + "/plugins/telemetry/DEVICE/" + DEVICE_ID + "/values/attributes/SERVER_SCOPE?keys=" + encodeURIComponent(keys.join(','));
+  return fetch(url, { headers: { "X-Authorization": "Bearer " + JWT } })
+    .then(function(res){
+      if(!res.ok) return res.text().then(function(t){ throw new Error("Month read failed: "+t); });
+      return res.json();
+    })
+    .then(function(json){
+      var out = [];
+      keys.forEach(function(k){
+        var arr = json[k] || [];
+        if(!arr.length) return;
+        var raw = arr[0] && arr[0].value; if(!raw) return;
+        var items = [];
+        try { items = JSON.parse(raw) || []; } catch(e){}
+        items.forEach(function(s, idx){
+          if(!s.Training_Start || !s.Training_End) return;
+          out.push({
+            id: k + "#" + idx,
+            title: s.Training_Title || s.Training_Topic || "Training",
+            start: new Date(Number(s.Training_Start)),
+            end:   new Date(Number(s.Training_End)),
+            classNames: ["event", colorByStatus(s.Training_Status)],
+            extendedProps: (function(){
+              var o = { __storeKey:k, __index:idx };
+              for (var prop in s) o[prop] = s[prop];
+              return o;
+            })()
+          });
+        });
       });
+      return out;
     });
-  });
-  return out;
 }
 
-/* =======================
-   DETAILS PANEL
-   ======================= */
+/************ DETAILS ************/
 function showDetails(ev){
-  const p = ev.extendedProps;
-  const fmt = v => v ? new Date(Number(v)).toLocaleString() : "-";
-  const badge = `badge b-${String(p.Training_Status||'planned').replace(' ','_')}`;
+  var p = ev.extendedProps;
+  function fmt(v){ return v ? new Date(Number(v)).toLocaleString() : "-"; }
+  var badge = "badge b-" + String(p.Training_Status || "planned").replace(" ","_");
   $("#details").className = "";
-  $("#details").innerHTML = `
-    <div class="kpi">
-      <span>Status</span><span><span class="${badge}">${escapeHtml(p.Training_Status||'planned')}</span></span>
-      <span>Title</span><span>${escapeHtml(p.Training_Title||'-')}</span>
-      <span>Topic</span><span>${escapeHtml(p.Training_Topic||'-')}</span>
-      <span>Operator</span><span>${escapeHtml(p.Training_Operator_Name||'-')}</span>
-      <span>Trainer</span><span>${escapeHtml(p.Trainer_Name||'-')}</span>
-      <span>Machine</span><span>${escapeHtml(p.Training_Machine||'-')}</span>
-      <span>Start</span><span>${fmt(p.Training_Start)}</span>
-      <span>End</span><span>${fmt(p.Training_End)}</span>
-    </div>`;
+  $("#details").innerHTML =
+    '<div class="kpi">'+
+      '<span>Status</span><span><span class="'+badge+'">'+escapeHtml(p.Training_Status||"planned")+'</span></span>'+
+      '<span>Title</span><span>'+escapeHtml(p.Training_Title||"-")+'</span>'+
+      '<span>Topic</span><span>'+escapeHtml(p.Training_Topic||"-")+'</span>'+
+      '<span>Operator</span><span>'+escapeHtml(p.Training_Operator_Name||"-")+'</span>'+
+      '<span>Trainer</span><span>'+escapeHtml(p.Trainer_Name||"-")+'</span>'+
+      '<span>Machine</span><span>'+escapeHtml(p.Training_Machine||"-")+'</span>'+
+      '<span>Start</span><span>'+fmt(p.Training_Start)+'</span>'+
+      '<span>End</span><span>'+fmt(p.Training_End)+'</span>'+
+    '</div>';
 }
 
-/* =======================
-   MODAL (CREATE)
-   ======================= */
-const overlay = $("#overlay");
-$("#closeModal").addEventListener("click", () => overlay.style.display = "none");
+/************ MODAL ************/
+var overlay = $("#overlay");
+$("#closeModal").addEventListener("click", function(){ overlay.style.display = "none"; });
 $("#saveSession").addEventListener("click", onSaveSession);
 
 function openModalForDate(jsDate){
-  state.clickedDate = new Date(jsDate.getFullYear(), jsDate.getMonth(), jsDate.getDate()); // midnight
+  state.clickedDate = new Date(jsDate.getFullYear(), jsDate.getMonth(), jsDate.getDate());
   $("#fDateHint").textContent = "Date: " + state.clickedDate.toDateString();
-  // reset
-  $("#fTitle").value = ""; $("#fOperator").value = ""; $("#fTrainer").value = "";
-  $("#fTopic").value = ""; $("#fMachine").value = ""; $("#fTimeTo").value = "09:00"; $("#fTimeFrom").value = "11:00";
+  $("#fTitle").value=""; $("#fOperator").value=""; $("#fTrainer").value="";
+  $("#fTopic").value=""; $("#fMachine").value=""; $("#fTimeTo").value="09:00"; $("#fTimeFrom").value="11:00";
   overlay.style.display = "flex";
 }
 
-async function onSaveSession(){
+function onSaveSession(){
   try{
     if(!JWT){ alert("Missing JWT (?token=)"); return; }
-    const base = state.clickedDate || new Date();
-    const payload = {
+    var base = state.clickedDate || new Date();
+    var payload = {
       Training_Title: $("#fTitle").value.trim(),
       Training_Operator_Name: $("#fOperator").value.trim(),
       Training_Start: mergeDateTime(base, $("#fTimeTo").value),   // Time To -> Start
@@ -335,82 +293,72 @@ async function onSaveSession(){
       Training_Machine: $("#fMachine").value.trim(),
       Training_Status: "planned"
     };
-
-    // quick validation
-    const must = [
+    var must = [
       ["Title", payload.Training_Title],
       ["Operator", payload.Training_Operator_Name],
       ["Trainer Name", payload.Trainer_Name],
       ["Training Topic", payload.Training_Topic],
       ["Training Machine", payload.Training_Machine]
     ];
-    for (const [label,val] of must){ if(!val){ alert(`Please enter ${label}`); return; } }
-    if (payload.Training_End <= payload.Training_Start){
-      alert("Time From must be after Time To."); return;
-    }
+    for (var i=0;i<must.length;i++){ if(!must[i][1]){ alert("Please enter "+must[i][0]); return; } }
+    if (payload.Training_End <= payload.Training_Start){ alert("Time From must be after Time To."); return; }
 
     loading("Saving…");
-    await saveDaySession(base, payload);
-    overlay.style.display = "none";
-
-    // Refresh current range
-    if (state.lastRange){
-      loading("Refreshing…");
-      const events = await readRangeSessions(state.lastRange.start, state.lastRange.end);
-      state.calendar.removeAllEvents();
-      state.calendar.addEventSource(events);
-      $("#details").className="empty"; $("#details").textContent="Select a session on the calendar";
-      loading(`Loaded ${events.length} session(s)`);
-    } else {
-      loading("");
-    }
+    saveDaySession(base, payload)
+      .then(function(){
+        overlay.style.display = "none";
+        if (state.lastRange){
+          loading("Refreshing…");
+          return readRangeSessions(state.lastRange.start, state.lastRange.end).then(function(events){
+            state.calendar.removeAllEvents();
+            state.calendar.addEventSource(events);
+            $("#details").className="empty"; $("#details").textContent="Select a session on the calendar";
+            loading("Loaded "+events.length+" session(s)");
+          });
+        } else {
+          loading("");
+        }
+      })
+      .catch(function(e){ console.error(e); alert(e.message||"Failed to save"); loading(""); });
   }catch(e){
-    console.error(e);
-    alert(e.message || "Failed to save");
-    loading("");
+    console.error(e); alert(e.message||"Failed to save"); loading("");
   }
 }
 
-/* =======================
-   BOOT
-   ======================= */
-document.addEventListener("DOMContentLoaded", async () => {
-  try{
-    loading("Loading calendar…");
-    await ensureFullCalendar(); // make sure library is available
-
-    const calEl = $("#calendar");
-    state.calendar = new FullCalendar.Calendar(calEl, {
-      initialView: "dayGridMonth",
-      headerToolbar: { left: "prev,next today", center: "title", right: "" },
-      height: "auto",
-      eventContent,
-      dateClick: (info)=> openModalForDate(info.date),
-      eventClick: (info)=> showDetails(info.event),
-      datesSet: async (info) => {
-        try{
-          loading("Loading…");
-          state.lastRange = { start: info.start, end: info.end }; // end exclusive
-          const events = await readRangeSessions(info.start, info.end);
+/************ BOOT ************/
+window.addEventListener("load", function(){
+  if (!window.FullCalendar){ 
+    document.getElementById('calendar').innerHTML =
+      '<div class="empty">FullCalendar failed to load. Check network/CSP.</div>';
+    return;
+  }
+  var calEl = $("#calendar");
+  state.calendar = new FullCalendar.Calendar(calEl, {
+    initialView: "dayGridMonth",
+    headerToolbar: { left: "prev,next today", center: "title", right: "" },
+    height: "auto",
+    eventContent: eventContent,
+    dateClick: function(info){ openModalForDate(info.date); },
+    eventClick: function(info){ showDetails(info.event); },
+    datesSet: function(info){
+      loading("Loading…");
+      state.lastRange = { start: info.start, end: info.end };
+      readRangeSessions(info.start, info.end)
+        .then(function(events){
           state.calendar.removeAllEvents();
           state.calendar.addEventSource(events);
           $("#details").className="empty"; $("#details").textContent="Select a session on the calendar";
-          loading(`Loaded ${events.length} session(s)`);
-        }catch(err){
+          loading("Loaded "+events.length+" session(s)");
+        })
+        .catch(function(err){
           console.error(err);
           loading(err.message || "Failed to load");
           state.calendar.removeAllEvents();
-        }
-      }
-    });
-    state.calendar.render();
-    loading(""); // clear
-  }catch(err){
-    console.error(err);
-    document.getElementById('calendar').innerHTML =
-      `<div class="empty"><span class="err">Calendar failed to load:</span> ${err.message}</div>`;
-    loading("");
-  }
+        });
+    }
+  });
+  state.calendar.render();
+  loading("");
 });
 </script>
 </body>
