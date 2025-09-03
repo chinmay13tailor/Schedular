@@ -30,12 +30,14 @@
     .kpi span:first-child{color:#64748b}
     footer{grid-column:1/-1;color:#64748b;font-size:12px;text-align:center}
     @media(max-width:1024px){.app{grid-template-columns:1fr}.side{position:static}}
+
     /* FullCalendar tweaks */
     .fc .fc-toolbar{padding:10px}
     .fc .fc-toolbar-title{font-size:16px;font-weight:800}
     .fc .fc-button{background:#fff;border:1px solid var(--ring);color:var(--text);border-radius:10px;padding:6px 10px}
     .fc-theme-standard td,.fc-theme-standard th{border-color:var(--ring)}
     .fc-daygrid-day-number{color:#64748b}
+
     /* Event chip */
     .event{border-radius:10px;border:0;padding:6px 8px;color:#fff;font-weight:700;
            box-shadow:0 1px 0 rgba(0,0,0,.08), 0 8px 16px -12px rgba(0,0,0,.25)}
@@ -140,9 +142,11 @@
    ======================= */
 const API_BASE   = "https://plantwiz.pimateck.in/api";
 const DEVICE_ID  = "991cf500-661a-11f0-90f1-775fee303094";
-const TOKEN      = new URLSearchParams(location.search).get("token") || "";
+const QS         = new URLSearchParams(location.search);
+const TOKEN      = QS.get("token")  || ""; // JWT (passed by TB HTML widget)
+const DTOKEN     = QS.get("dtoken") || ""; // optional device access token fallback
 
-// Your keys (now includes Training_Title)
+// Keys (includes Training_Title). We also accept both spellings for "Score".
 const TRAINING_KEYS = [
   "Training_Title",
   "Training_Operator_Name",
@@ -172,6 +176,7 @@ function colorByStatus(s){
     case "pending_approval": return "status-pending_approval"; default: return "status-planned";
   }
 }
+// Parse epoch ms / epoch sec / ISO / "YYYY-MM-DD HH:mm"
 function parseMaybeTs(v){
   if (v == null) return null;
   const s = String(v).trim();
@@ -316,16 +321,11 @@ function openModalForDate(jsDate){
   state.clickedDate = new Date(jsDate.getFullYear(), jsDate.getMonth(), jsDate.getDate()); // strip time
   $("#fDateHint").textContent = "Date: " + state.clickedDate.toDateString();
   // sensible defaults
-  $("#fTitle").value = "";
-  $("#fOperator").value = "";
-  $("#fTrainer").value = "";
-  $("#fTopic").value = "";
-  $("#fMachine").value = "";
-  $("#fTimeTo").value = "09:00";
-  $("#fTimeFrom").value = "11:00";
+  $("#fTitle").value = ""; $("#fOperator").value = ""; $("#fTrainer").value = "";
+  $("#fTopic").value = ""; $("#fMachine").value = "";
+  $("#fTimeTo").value = "09:00"; $("#fTimeFrom").value = "11:00";
   overlay.style.display = "flex";
 }
-
 function mergeDateTime(baseDate, hhmm){
   const [h,m] = String(hhmm||"00:00").split(":").map(n=>parseInt(n||"0",10));
   const d = new Date(baseDate);
@@ -333,54 +333,105 @@ function mergeDateTime(baseDate, hhmm){
   return d.getTime(); // epoch ms
 }
 
+/* ==== SAVE to TB (robust: tries /timeseries, /timeseries/, then device telemetry if ?dtoken=) ==== */
 async function saveSession(){
   try{
     if(!TOKEN){ alert("Missing JWT (?token=)"); return; }
+
     const base = state.clickedDate || new Date();
-    // Per YOUR mapping:
-    //  Time To    -> Training_Start
-    //  Time From  -> Training_End
+    // Mapping as requested:
+    // Time To    -> Training_Start
+    // Time From  -> Training_End
     const payload = {
       Training_Title: $("#fTitle").value.trim(),
       Training_Operator_Name: $("#fOperator").value.trim(),
-      Training_Start: mergeDateTime(base, $("#fTimeTo").value),   // <-- mapped as requested
-      Training_End:   mergeDateTime(base, $("#fTimeFrom").value), // <-- mapped as requested
+      Training_Start: mergeDateTime(base, $("#fTimeTo").value),
+      Training_End:   mergeDateTime(base, $("#fTimeFrom").value),
       Trainer_Name: $("#fTrainer").value.trim(),
       Training_Topic: $("#fTopic").value.trim(),
       Training_Machine: $("#fMachine").value.trim(),
       Training_Status: "planned"
     };
 
-    // Minimal validation
-    if(!payload.Training_Title){ alert("Please enter Title"); return; }
-    if(!payload.Training_Operator_Name){ alert("Please enter Operator"); return; }
-    if(!payload.Trainer_Name){ alert("Please enter Trainer Name"); return; }
-    if(!payload.Training_Topic){ alert("Please enter Training Topic"); return; }
-    if(!payload.Training_Machine){ alert("Please enter Training Machine"); return; }
+    // basic validation
+    const req = [
+      ['Title', payload.Training_Title],
+      ['Operator', payload.Training_Operator_Name],
+      ['Trainer Name', payload.Trainer_Name],
+      ['Training Topic', payload.Training_Topic],
+      ['Training Machine', payload.Training_Machine]
+    ];
+    for (const [label,val] of req){ if(!val){ alert(`Please enter ${label}`); return; } }
 
     loading("Saving…");
-    const url = `${API_BASE}/plugins/telemetry/DEVICE/${DEVICE_ID}/timeseries`;
-    const res = await fetch(url, {
+
+    // Attempt 1: JWT timeseries (no trailing slash)
+    const url1 = `${API_BASE}/plugins/telemetry/DEVICE/${DEVICE_ID}/timeseries`;
+    let res = await fetch(url1, {
       method: "POST",
       headers: { "X-Authorization": `Bearer ${TOKEN}`, "Content-Type": "application/json" },
       body: JSON.stringify(payload)
     });
+
     if(!res.ok){
-      const t = await res.text().catch(()=>res.statusText);
-      throw new Error(`Save failed: ${res.status} ${t}`);
+      const text1 = await res.text().catch(()=>res.statusText||"");
+      const looksLikeAttrScope = /AttributeScope/i.test(text1);
+
+      if (looksLikeAttrScope) {
+        // Attempt 2: add trailing slash
+        const url2 = `${API_BASE}/plugins/telemetry/DEVICE/${DEVICE_ID}/timeseries/`;
+        res = await fetch(url2, {
+          method: "POST",
+          headers: { "X-Authorization": `Bearer ${TOKEN}`, "Content-Type": "application/json" },
+          body: JSON.stringify(payload)
+        });
+        if(!res.ok){
+          const text2 = await res.text().catch(()=>res.statusText||"");
+          // Attempt 3: device HTTP telemetry (needs ?dtoken=...)
+          if (DTOKEN) {
+            const origin = new URL(API_BASE).origin;
+            const url3 = `${origin}/api/v1/${DTOKEN}/telemetry`;
+            res = await fetch(url3, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify(payload)
+            });
+            if(!res.ok){
+              const text3 = await res.text().catch(()=>res.statusText||"");
+              throw new Error(`Save failed (all attempts).\n1) ${url1}: ${text1}\n2) ${url2}: ${text2}\n3) ${url3}: ${text3}`);
+            }
+          } else {
+            throw new Error(`Save failed.\n${url1}: ${text1}\n${url2}: ${text2}\nTip: pass ?dtoken=<DEVICE_ACCESS_TOKEN> to use the device telemetry endpoint as a fallback.`);
+          }
+        }
+      } else {
+        // Not AttributeScope, but still failed → try trailing slash once
+        const url2 = `${API_BASE}/plugins/telemetry/DEVICE/${DEVICE_ID}/timeseries/`;
+        const res2 = await fetch(url2, {
+          method: "POST",
+          headers: { "X-Authorization": `Bearer ${TOKEN}`, "Content-Type": "application/json" },
+          body: JSON.stringify(payload)
+        });
+        if (!res2.ok) {
+          const text2 = await res2.text().catch(()=>res2.statusText||"");
+          throw new Error(`Save failed.\n${url1}: ${text1}\n${url2}: ${text2}`);
+        }
+        res = res2;
+      }
     }
+
+    // Success → close modal and refresh current range
     overlay.style.display = "none";
     loading("Saved. Refreshing…");
-
-    // Refresh visible range
-    if(state.lastRange){
+    if (state.lastRange){
       state.events = await fetchSessions(state.lastRange.start.getTime(), state.lastRange.end.getTime()-1);
       fillSelectors(state.events);
       applyFilters();
-    }else{
+      loading(`Loaded ${state.events.length} session(s)`);
+    } else {
       state.calendar.refetchEvents?.();
+      loading("");
     }
-    loading(`Loaded ${state.events.length} session(s)`);
   }catch(e){
     console.error(e);
     alert(e.message || "Failed to save session");
@@ -400,7 +451,7 @@ document.addEventListener("DOMContentLoaded", () => {
     events: [],
     eventContent,
     eventClick: (info) => showDetails(info.event),
-    dateClick: (info) => openModalForDate(info.date),     // <<< NEW: open popup on day click
+    dateClick: (info) => openModalForDate(info.date),     // NEW: open popup on day click
     datesSet: async (info) => {
       try{
         loading("Loading…");
