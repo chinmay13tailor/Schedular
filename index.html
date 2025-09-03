@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
 <title>PlantWiz • Training Calendar (Telemetry)</title>
 
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.11/index.global.min.css">
+<link id="fc-css" rel="stylesheet" href="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.11/index.global.min.css">
 <style>
   :root{--ring:#e5e7eb;--bg:#fff;--text:#0f172a;--muted:#64748b;
         --blue:#3b82f6;--green:#22c55e;--cyan:#06b6d4;--amber:#f59e0b;--red:#ef4444}
@@ -136,14 +136,25 @@
   </div>
 </div>
 
-<script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.11/index.global.min.js"></script>
+<!-- FullCalendar JS + fallback -->
+<script id="fc-js" src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.11/index.global.min.js"></script>
 <script>
+/* fallback to unpkg if primary fails */
+window.addEventListener('error', function(e){
+  var s = e.target || {};
+  if (s.id === 'fc-js') {
+    var alt = document.createElement('script');
+    alt.src = 'https://unpkg.com/fullcalendar@6.1.11/index.global.min.js';
+    document.body.appendChild(alt);
+  }
+}, true);
+
 /************ CONFIG ************/
 var ORIGIN    = "https://plantwiz.pimateck.in";
 var API_BASE  = ORIGIN + "/api";
 var DEVICE_ID = "991cf500-661a-11f0-90f1-775fee303094";
 var JWT       = new URLSearchParams(location.search).get("token")  || "";
-var DTOKEN    = new URLSearchParams(location.search).get("dtoken") || ""; // used for WRITE
+var DTOKEN    = new URLSearchParams(location.search).get("dtoken") || ""; // for WRITE
 var KEYS = [
   "Training_Title","Training_Operator_Name","Training_Start","Training_End",
   "Trainer_Name","Training_Topic","Training_Machine","Training_Status"
@@ -151,10 +162,9 @@ var KEYS = [
 
 /************ HELPERS ************/
 function $(s){ return document.querySelector(s); }
-function loading(t){ $("#loading")..textContent = t || ""; }
+function loading(t){ $("#loading").textContent = t || ""; }  /* <-- fixed single dot */
 var state = { calendar:null, clickedDate:null, lastRange:null };
 
-function two(n){ return ('0'+n).slice(-2); }
 function mergeDateTime(baseDate, hhmm){
   var parts = String(hhmm||"00:00").split(":");
   var h = parseInt(parts[0]||"0",10), m = parseInt(parts[1]||"0",10);
@@ -188,7 +198,6 @@ function eventContent(arg){
 }
 
 /************ TELEMETRY: READ ************/
-// GET timeseries for the visible range and keys, then group by identical ts
 function readRangeSessions(rangeStart, rangeEnd){
   if(!JWT){ return Promise.reject(new Error("Missing JWT (?token=) for reads")); }
   var url = API_BASE + "/plugins/telemetry/DEVICE/" + DEVICE_ID + "/values/timeseries"
@@ -202,7 +211,7 @@ function readRangeSessions(rangeStart, rangeEnd){
       return res.json();
     })
     .then(function(tsObj){
-      var map = {}; // ts -> obj of values
+      var map = {}; // ts -> row
       Object.keys(tsObj || {}).forEach(function(k){
         (tsObj[k]||[]).forEach(function(p){
           var ts = Number(p.ts);
@@ -211,13 +220,11 @@ function readRangeSessions(rangeStart, rangeEnd){
         });
       });
 
-      // Build event list from grouped records
       var out = [];
       Object.keys(map).forEach(function(tsStr){
         var r = map[tsStr];
         var st = Number(r.Training_Start || r.ts);
         var en = Number(r.Training_End || (st+30*60*1000));
-        // Only accept rows that look like sessions (have title or topic & operator)
         if (!st || !en) return;
         var title = String(r.Training_Title || r.Training_Topic || "Training");
         out.push({
@@ -228,176 +235,4 @@ function readRangeSessions(rangeStart, rangeEnd){
           classNames: ["event", colorByStatus(r.Training_Status)],
           extendedProps: {
             Training_Title: title,
-            Training_Operator_Name: r.Training_Operator_Name || "",
-            Training_Start: st,
-            Training_End: en,
-            Trainer_Name: r.Trainer_Name || "",
-            Training_Topic: r.Training_Topic || "",
-            Training_Machine: r.Training_Machine || "",
-            Training_Status: r.Training_Status || "planned",
-            __ts: r.ts
-          }
-        });
-      });
-
-      // Sort by start time for deterministic display
-      out.sort(function(a,b){ return a.start - b.start; });
-      return out;
-    });
-}
-
-/************ TELEMETRY: WRITE ************/
-// POST /api/v1/<token>/telemetry with provided ts and all 8 keys
-function writeTelemetrySession(session){
-  if(!DTOKEN){ return Promise.reject(new Error("No device token. Add ?dtoken=YOUR_TOKEN or paste it and click 'Use token'.")); }
-  var url = ORIGIN + "/api/v1/" + DTOKEN + "/telemetry";
-  var payload = {
-    ts: session.Training_Start,   // store at the start time
-    values: {
-      Training_Title: session.Training_Title,
-      Training_Operator_Name: session.Training_Operator_Name,
-      Training_Start: session.Training_Start,
-      Training_End: session.Training_End,
-      Trainer_Name: session.Trainer_Name,
-      Training_Topic: session.Training_Topic,
-      Training_Machine: session.Training_Machine,
-      Training_Status: session.Training_Status || "planned"
-    }
-  };
-  return fetch(url, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload)
-  }).then(function(res){
-    if(!res.ok) return res.text().then(function(t){ throw new Error("Telemetry write failed: "+t); });
-  });
-}
-
-/************ DETAILS PANEL ************/
-function showDetails(ev){
-  var p = ev.extendedProps;
-  function fmt(v){ return v ? new Date(Number(v)).toLocaleString() : "-"; }
-  var badge = "badge b-" + String(p.Training_Status || "planned").replace(" ","_");
-  $("#details").className = "";
-  $("#details").innerHTML =
-    '<div class="kpi">'+
-      '<span>Base ts</span><span>'+escapeHtml(String(p.__ts||"-"))+'</span>'+
-      '<span>Status</span><span><span class="'+badge+'">'+escapeHtml(p.Training_Status||"planned")+'</span></span>'+
-      '<span>Title</span><span>'+escapeHtml(p.Training_Title||"-")+'</span>'+
-      '<span>Topic</span><span>'+escapeHtml(p.Training_Topic||"-")+'</span>'+
-      '<span>Operator</span><span>'+escapeHtml(p.Training_Operator_Name||"-")+'</span>'+
-      '<span>Trainer</span><span>'+escapeHtml(p.Trainer_Name||"-")+'</span>'+
-      '<span>Machine</span><span>'+escapeHtml(p.Training_Machine||"-")+'</span>'+
-      '<span>Start</span><span>'+fmt(p.Training_Start)+'</span>'+
-      '<span>End</span><span>'+fmt(p.Training_End)+'</span>'+
-    '</div>';
-}
-
-/************ MODAL ************/
-var overlay = $("#overlay");
-$("#closeModal").addEventListener("click", function(){ overlay.style.display = "none"; });
-$("#saveSession").addEventListener("click", onSaveSession);
-$("#useTok").addEventListener("click", function(){
-  DTOKEN = ($("#tok").value||"").trim();
-  if (DTOKEN) { $("#mode").innerHTML = 'Write via <code>/api/v1/'+DTOKEN+'/telemetry</code>'; alert("Device token set for writes."); }
-});
-
-function openModalForDate(jsDate){
-  state.clickedDate = new Date(jsDate.getFullYear(), jsDate.getMonth(), jsDate.getDate());
-  $("#fDateHint").textContent = "Date: " + state.clickedDate.toDateString();
-  $("#fTitle").value=""; $("#fOperator").value=""; $("#fTrainer").value="";
-  $("#fTopic").value=""; $("#fMachine").value=""; $("#fTimeTo").value="09:00"; $("#fTimeFrom").value="11:00";
-  overlay.style.display = "flex";
-}
-
-function onSaveSession(){
-  try{
-    var base = state.clickedDate || new Date();
-    var payload = {
-      Training_Title: $("#fTitle").value.trim(),
-      Training_Operator_Name: $("#fOperator").value.trim(),
-      Training_Start: mergeDateTime(base, $("#fTimeTo").value),   // Time To -> Start
-      Training_End:   mergeDateTime(base, $("#fTimeFrom").value), // Time From -> End
-      Trainer_Name: $("#fTrainer").value.trim(),
-      Training_Topic: $("#fTopic").value.trim(),
-      Training_Machine: $("#fMachine").value.trim(),
-      Training_Status: "planned"
-    };
-    var must = [
-      ["Title", payload.Training_Title],
-      ["Operator", payload.Training_Operator_Name],
-      ["Trainer Name", payload.Trainer_Name],
-      ["Training Topic", payload.Training_Topic],
-      ["Training Machine", payload.Training_Machine]
-    ];
-    for (var i=0;i<must.length;i++){ if(!must[i][1]){ alert("Please enter "+must[i][0]); return; } }
-    if (payload.Training_End <= payload.Training_Start){ alert("Time From must be after Time To."); return; }
-
-    if(!DTOKEN){
-      $("#tok").focus();
-      alert("Please set the device token to save telemetry. Add ?dtoken=... to URL or paste token and click 'Use token'.");
-      return;
-    }
-
-    loading("Saving telemetry…");
-    writeTelemetrySession(payload)
-      .then(function(){
-        overlay.style.display = "none";
-        if (state.lastRange){
-          loading("Refreshing…");
-          return readRangeSessions(state.lastRange.start, state.lastRange.end).then(function(events){
-            state.calendar.removeAllEvents();
-            state.calendar.addEventSource(events);
-            $("#details").className="empty"; $("#details").textContent="Select a session on the calendar";
-            loading("Loaded "+events.length+" session(s)");
-          });
-        } else { loading(""); }
-      })
-      .catch(function(e){ console.error(e); alert(e.message||"Failed to save"); loading(""); });
-  }catch(e){
-    console.error(e); alert(e.message||"Failed to save"); loading("");
-  }
-}
-
-/************ BOOT ************/
-window.addEventListener("load", function(){
-  $("#tok").value = DTOKEN || "";
-  $("#mode").innerHTML = DTOKEN
-      ? 'Write via <code>/api/v1/'+DTOKEN+'/telemetry</code>'
-      : 'Set <code>?dtoken=YOUR_TOKEN</code> or paste token to enable writes';
-  if (!window.FullCalendar){ 
-    document.getElementById('calendar').innerHTML =
-      '<div class="empty"><span class="err">FullCalendar failed to load.</span></div>';
-    return;
-  }
-  var calEl = $("#calendar");
-  state.calendar = new FullCalendar.Calendar(calEl, {
-    initialView: "dayGridMonth",
-    headerToolbar: { left: "prev,next today", center: "title", right: "" },
-    height: "auto",
-    eventContent: eventContent,
-    dateClick: function(info){ openModalForDate(info.date); },
-    eventClick: function(info){ showDetails(info.event); },
-    datesSet: function(info){
-      loading("Loading…");
-      state.lastRange = { start: info.start, end: info.end };
-      readRangeSessions(info.start, info.end)
-        .then(function(events){
-          state.calendar.removeAllEvents();
-          state.calendar.addEventSource(events);
-          $("#details").className="empty"; $("#details").textContent="Select a session on the calendar";
-          loading("Loaded "+events.length+" session(s)");
-        })
-        .catch(function(err){
-          console.error(err);
-          loading(err.message || "Failed to load");
-          state.calendar.removeAllEvents();
-        });
-    }
-  });
-  state.calendar.render();
-  loading("");
-});
-</script>
-</body>
-</html>
+            Training_Oper_
