@@ -10,25 +10,16 @@
   :root{--ring:#e5e7eb;--bg:#fff;--text:#0f172a;--muted:#64748b;
         --blue:#3b82f6;--green:#22c55e;--cyan:#06b6d4;--red:#ef4444}
   *{box-sizing:border-box}
-  body{margin:0;background:#fff;color:#0f172a;font:14px/1.45 system-ui,-apple-system,Segoe UI,Roboto,Arial}
+  body{margin:0;background:#fff;color:var(--text);font:14px/1.45 system-ui,-apple-system,Segoe UI,Roboto,Arial}
   .app{display:grid;grid-template-columns:1fr 320px;gap:16px;min-height:100vh;padding:16px}
-  header{grid-column:1/-1;border:1px solid var(--ring);border-radius:12px;background:#fff;padding:10px 12px}
-  .hbar{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
-  .brand{font-weight:800}
-  .muted{color:#64748b}
-  .spacer{flex:1}
-
-  .btn,.input,select,textarea{border:1px solid var(--ring);border-radius:10px;background:#fff;padding:8px 10px}
+  header{grid-column:1/-1;display:flex;gap:10px;align-items:center;border:1px solid var(--ring);border-radius:12px;background:#fff;padding:10px 12px}
+  .brand{font-weight:800}.spacer{flex:1}
+  .btn,.input,textarea,select{border:1px solid var(--ring);border-radius:10px;background:#fff;padding:8px 10px}
   .btn{cursor:pointer;font-weight:800}
   .btn.primary{background:linear-gradient(#3b82f6,#2563eb);color:#fff;border:0}
-  .btn.ghost{border-color:var(--ring);color:#0f172a}
   .btn.danger{border-color:var(--red);color:#dc2626}
+  .btn.ghost{border-color:var(--ring);color:#0f172a}
   .btn:disabled{opacity:.6;cursor:not-allowed}
-
-  .filters{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:8px}
-  .filters label{font-size:12px;color:#475569;font-weight:800;margin-right:4px}
-  .filters .row{display:flex;gap:6px;align-items:center}
-
   .card{border:1px solid var(--ring);border-radius:12px;background:#fff;overflow:hidden}
   #calendar{min-height:560px}
   .side{border:1px solid var(--ring);border-radius:12px;background:#fff;padding:14px;position:sticky;top:16px;height:fit-content}
@@ -37,7 +28,10 @@
   .kpi{display:grid;grid-template-columns:120px 1fr;gap:8px;font-size:13px}
   .kpi span:first-child{color:#64748b}
   .side-actions{display:flex;gap:8px;margin-top:12px;flex-wrap:wrap}
-  footer{grid-column:1/-1;color:#64748b;font-size:12px;text-align:center}
+
+  /* Filter bar */
+  .filters{grid-column:1/-1;display:flex;align-items:center;gap:10px;border:1px solid var(--ring);border-radius:12px;background:#fff;padding:10px 12px}
+  .filters label{font-size:12px;color:#64748b;margin-right:4px}
 
   .fc .fc-toolbar{padding:10px}
   .fc .fc-toolbar-title{font-size:16px;font-weight:800}
@@ -52,7 +46,7 @@
   .sub{display:block;font-weight:600;opacity:.95}
   .tiny{display:block;font-weight:600;opacity:.8;font-size:12px}
 
-  .success{color:#16a34a}.err{color:#dc2626;font-weight:700}
+  .muted{color:#64748b}
   #loading{font-size:12px;color:#64748b;margin-left:8px}
 
   /* Modal base */
@@ -77,31 +71,25 @@
 <body>
 <div class="app">
   <header>
-    <div class="hbar">
-      <div class="brand">PlantWiz • Training Calendar</div>
-      <span class="muted">Create → <code>Save_Button=false</code>. Update/Cancel → <code>Update_Buttton=true</code> + <code>Update_Timestamp</code>. “Send Mail” writes <code>Send_Mail=true</code> only.</span>
-      <div class="spacer"></div>
-      <span id="loading"></span>
-    </div>
-
-    <!-- Filters -->
-    <div class="filters">
-      <div class="row">
-        <label for="filtOperator">Operator</label>
-        <select id="filtOperator" class="input"><option value="">All</option></select>
-      </div>
-      <div class="row">
-        <label for="filtTrainer">Trainer</label>
-        <select id="filtTrainer" class="input"><option value="">All</option></select>
-      </div>
-      <div class="row">
-        <label for="filtMachine">Machine</label>
-        <select id="filtMachine" class="input"><option value="">All</option></select>
-      </div>
-      <button id="applyFilters" class="btn ghost" type="button">Update</button>
-      <button id="resetFilters" class="btn ghost" type="button">Reset</button>
-    </div>
+    <div class="brand">PlantWiz • Training Calendar</div>
+    <div class="spacer"></div>
+    <span id="loading"></span>
   </header>
+
+  <!-- FILTER BAR -->
+  <div class="filters">
+    <label for="filtOp">Operator</label>
+    <select id="filtOp" class="input" style="min-width:140px"><option value="__ALL__">All</option></select>
+
+    <label for="filtTr">Trainer</label>
+    <select id="filtTr" class="input" style="min-width:140px"><option value="__ALL__">All</option></select>
+
+    <label for="filtMa">Machine</label>
+    <select id="filtMa" class="input" style="min-width:140px"><option value="__ALL__">All</option></select>
+
+    <button class="btn ghost" id="btnApplyFilters" type="button">Update</button>
+    <button class="btn" id="btnResetFilters" type="button">Reset</button>
+  </div>
 
   <div class="card"><div id="calendar"></div></div>
 
@@ -114,10 +102,6 @@
       <button class="btn primary" id="btnMail"   type="button">Send Mail</button>
     </div>
   </aside>
-
-  <footer>
-    Calendar reads telemetry; rule-chain mirrors attributes to telemetry & can rewrite rows using <code>Update_Timestamp</code>.
-  </footer>
 </div>
 
 <!-- Create/Update Modal -->
@@ -133,7 +117,7 @@
         <input id="fTitle" class="input" type="text" placeholder="e.g., Operational Safety">
       </div>
       <div>
-        <label>Operator</label>
+        <label>Operator(s)</label>
         <input id="fOperator" class="input" type="text" placeholder="Operator name(s)">
       </div>
       <div>
@@ -164,7 +148,6 @@
           <option value="Compleated">Compleated</option>
           <option value="Cancelled">Cancelled</option>
         </select>
-        <div class="muted" style="margin-top:6px">Pick <strong>Planned</strong> to reactivate a cancelled session.</div>
       </div>
 
       <div class="row-full muted" id="fDateHint">Date: —</div>
@@ -194,7 +177,7 @@
           <button class="btn ghost" id="addMailBtn" type="button">+</button>
         </div>
         <div id="mailChips" class="chips"></div>
-        <div class="chips-hint">Add one email at a time using “+”. Example: ops@plant.com, trainer@plant.com</div>
+        <div class="chips-hint">Add one email at a time using “+”.</div>
       </div>
     </div>
     <footer>
@@ -229,8 +212,9 @@ function loading(t){ $("#loading").textContent = t || ""; }
 var state = {
   calendar:null, clickedDate:null, lastRange:null, selectedEvent:null, mode:"create",
   mailList: [],
-  lastEvents: [],       // full unfiltered events in current range
-  filters: { operator:"", trainer:"", machine:"" }
+  // filters
+  filters: { op: "__ALL__", tr: "__ALL__", ma: "__ALL__" },
+  lastEventsFull: [] // the full (unfiltered) events for the current range
 };
 
 function mergeDateTime(baseDate, hhmm){
@@ -264,16 +248,11 @@ function eventContent(arg){
     '<span class="tiny">'+escapeHtml(p.Training_Operator_Name || "")+'</span>'
   };
 }
-function isValidEmail(s){ return /^[^\s@]+@[^\s@]+\.[^\s@]+$/i.test(s || ""); }
-function containsCSV(haystack, needle){
-  if (!needle) return true;
-  if (!haystack) return false;
-  return haystack.toLowerCase().split(/[;,|]/).some(x => x.trim() === needle.toLowerCase()) ||
-         haystack.toLowerCase().includes(needle.toLowerCase());
+function isValidEmail(s){
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/i.test(s || "");
 }
 
 /************ READ (telemetry) ************/
-// returns array of events (unfiltered)
 function readRangeSessions(rangeStart, rangeEnd){
   if(!JWT){ return Promise.reject(new Error("Missing JWT (?token=)")); }
   var url = API_BASE + "/plugins/telemetry/DEVICE/" + DEVICE_ID + "/values/timeseries"
@@ -324,79 +303,77 @@ function readRangeSessions(rangeStart, rangeEnd){
 }
 
 /************ FILTERS ************/
-function populateFilterOptions(events){
+function populateFiltersFrom(events){
   // collect uniques
-  var ops = new Set(), trainers = new Set(), machines = new Set();
+  var ops = new Set(), trs = new Set(), mas = new Set();
   events.forEach(ev=>{
-    var p = ev.extendedProps || {};
-    (String(p.Training_Operator_Name||"").split(/[;,|]/).map(s=>s.trim()).filter(Boolean) || [])
-      .forEach(x=>ops.add(x));
-    if (p.Trainer_Name)  trainers.add(String(p.Trainer_Name));
-    if (p.Training_Machine) machines.add(String(p.Training_Machine));
+    var p = ev.extendedProps||{};
+    if (p.Training_Operator_Name) ops.add(String(p.Training_Operator_Name));
+    if (p.Trainer_Name)          trs.add(String(p.Trainer_Name));
+    if (p.Training_Machine)      mas.add(String(p.Training_Machine));
   });
-
   function fillSelect(sel, set){
-    var el = $(sel), prev = el.value;
-    var options = ['<option value="">All</option>'];
-    Array.from(set).sort((a,b)=>a.localeCompare(b)).forEach(v=>{
-      var esc = v.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-      options.push('<option value="'+esc+'">'+esc+'</option>');
-    });
-    el.innerHTML = options.join('');
-    // try keep previous selection if still present
-    var tryVal = prev && Array.from(set).includes(prev) ? prev : "";
-    el.value = tryVal;
-    state.filters[el.id==='filtOperator'?'operator':el.id==='filtTrainer'?'trainer':'machine'] = tryVal;
+    var el = $(sel);
+    var val = el.value || "__ALL__";
+    el.innerHTML = '<option value="__ALL__">All</option>' +
+      Array.from(set).sort().map(v=>'<option>'+escapeHtml(v)+'</option>').join('');
+    // keep previous selection if possible
+    if ([...set].includes(val)) el.value = val; else el.value="__ALL__";
   }
-
-  fillSelect('#filtOperator', ops);
-  fillSelect('#filtTrainer', trainers);
-  fillSelect('#filtMachine', machines);
+  fillSelect("#filtOp", ops); fillSelect("#filtTr", trs); fillSelect("#filtMa", mas);
 }
-
-function applyFiltersAndRender(){
-  var f = state.filters;
-  var filtered = state.lastEvents.filter(ev=>{
-    var p = ev.extendedProps || {};
-    var okOp  = !f.operator || containsCSV(p.Training_Operator_Name, f.operator);
-    var okTr  = !f.trainer || String(p.Trainer_Name||"").toLowerCase() === f.trainer.toLowerCase();
-    var okMac = !f.machine || String(p.Training_Machine||"").toLowerCase() === f.machine.toLowerCase();
-    return okOp && okTr && okMac;
+function applyFiltersTo(events){
+  var op = $("#filtOp").value, tr = $("#filtTr").value, ma = $("#filtMa").value;
+  state.filters = { op: op, tr: tr, ma: ma };
+  return events.filter(ev=>{
+    var p = ev.extendedProps||{};
+    var okOp = (op==="__ALL__" || String(p.Training_Operator_Name)===op);
+    var okTr = (tr==="__ALL__" || String(p.Trainer_Name)===tr);
+    var okMa = (ma==="__ALL__" || String(p.Training_Machine)===ma);
+    return okOp && okTr && okMa;
   });
+}
+$("#btnApplyFilters").addEventListener("click", function(){
+  if (!state.calendar) return;
+  var filtered = applyFiltersTo(state.lastEventsFull);
   state.calendar.removeAllEvents();
   state.calendar.addEventSource(filtered);
-  $("#details").className="empty"; $("#details").textContent="Select a session on the calendar";
-  $("#sideActions").style.display="none";
   loading("Loaded "+filtered.length+" session(s)");
-}
-
-$("#applyFilters").addEventListener("click", function(){
-  state.filters.operator = $("#filtOperator").value || "";
-  state.filters.trainer  = $("#filtTrainer").value  || "";
-  state.filters.machine  = $("#filtMachine").value  || "";
-  applyFiltersAndRender();
 });
-$("#resetFilters").addEventListener("click", function(){
-  $("#filtOperator").value = $("#filtTrainer").value = $("#filtMachine").value = "";
-  state.filters = { operator:"", trainer:"", machine:"" };
-  applyFiltersAndRender();
+$("#btnResetFilters").addEventListener("click", function(){
+  $("#filtOp").value="__ALL__"; $("#filtTr").value="__ALL__"; $("#filtMa").value="__ALL__";
+  state.filters = { op:"__ALL__", tr:"__ALL__", ma:"__ALL__" };
+  state.calendar.removeAllEvents();
+  state.calendar.addEventSource(state.lastEventsFull);
+  loading("Loaded "+state.lastEventsFull.length+" session(s)");
 });
 
 /************ AUTO-REFRESH LOOP (every 5s, up to 3 min) ************/
 var _autoTimer = null, _autoDeadline = 0;
-function stopAutoRefresh(){ if (_autoTimer) { clearInterval(_autoTimer); _autoTimer = null; } }
+function stopAutoRefresh(){
+  if (_autoTimer) { clearInterval(_autoTimer); _autoTimer = null; }
+}
 function startAutoRefresh(expectedTs, predicate){
   stopAutoRefresh();
   _autoDeadline = Date.now() + 3*60*1000;
   _autoTimer = setInterval(function(){
-    if (Date.now() > _autoDeadline) { stopAutoRefresh(); loading("Stopped: timeout waiting for telemetry update"); return; }
+    if (Date.now() > _autoDeadline) {
+      stopAutoRefresh();
+      loading("Stopped: timeout waiting for telemetry update");
+      return;
+    }
     if (!state.lastRange) return;
     readRangeSessions(state.lastRange.start, state.lastRange.end)
       .then(function(events){
-        state.lastEvents = events.slice();
-        populateFilterOptions(state.lastEvents);
-        applyFiltersAndRender(); // keep filter view
-        loading("Auto-refreshing…");
+        // store full and apply current filters
+        state.lastEventsFull = events.slice();
+        populateFiltersFrom(events);
+        var filtered = applyFiltersTo(events);
+        state.calendar.removeAllEvents();
+        state.calendar.addEventSource(filtered);
+        $("#details").className="empty"; $("#details").textContent="Select a session on the calendar";
+        $("#sideActions").style.display="none";
+        loading("Loaded "+filtered.length+" session(s) — auto-refreshing…");
         if (expectedTs != null){
           var found = events.find(ev => String(ev.extendedProps.__ts) === String(expectedTs));
           if (found){
@@ -405,9 +382,12 @@ function startAutoRefresh(expectedTs, predicate){
               catch(e){}
             } else { stopAutoRefresh(); loading("Update detected ✓"); }
           }
-        } else { stopAutoRefresh(); }
+        }
       })
-      .catch(function(err){ console.error(err); loading("Auto-refresh error: "+(err.message||err)); });
+      .catch(function(err){
+        console.error(err);
+        loading("Auto-refresh error: "+(err.message||err));
+      });
   }, 5000);
 }
 
@@ -441,10 +421,11 @@ function writeAttributes(session, opts){
   }).then(res => res.ok ? null : res.text().then(t => { throw new Error("Attribute write failed: "+t); }));
 }
 
-/* WRITE (mail trigger) */
+/* WRITE (mail trigger): ONLY Send_Mail + Training_mails + training fields */
 function writeMailAttributes(session, recipients){
   if(!JWT) return Promise.reject(new Error("Missing JWT (?token=)"));
   var url = API_BASE + "/plugins/telemetry/DEVICE/" + DEVICE_ID + "/SERVER_SCOPE";
+
   var body = {
     Training_Title:         session.Training_Title || "",
     Training_Operator_Name: session.Training_Operator_Name || "",
@@ -487,7 +468,7 @@ function showDetails(ev){
   $("#sideActions").style.display = "flex";
 }
 
-/************ MODALS + ACTIONS (update/cancel/mail) ************/
+/************ MODALS + ACTIONS ************/
 var overlay = $("#overlay");
 var mailOverlay = $("#mailOverlay");
 function busy(on){
@@ -496,7 +477,7 @@ function busy(on){
   $("#btnEdit").disabled     = !!on;
   $("#btnMail").disabled     = !!on;
   $("#sendMailBtn").disabled = !!on;
-  var addBtn = $("#addMailBtn"); if (addBtn) addBtn.disabled = !!on;
+  $("#addMailBtn").disabled  = !!on && $("#addMailBtn");
 }
 $("#closeModal").addEventListener("click", function(){ overlay.style.display = "none"; });
 $("#closeMailModal").addEventListener("click", function(){ mailOverlay.style.display = "none"; });
@@ -557,9 +538,10 @@ $("#btnCancel").addEventListener("click", function(){
     .finally(()=>{ busy(false); });
 });
 
-/* Mail chips UI */
+/* --------- Send Mail flow (chips UI) ---------- */
 function refreshMailChips(){
-  var box = $("#mailChips"); box.innerHTML = "";
+  var box = $("#mailChips");
+  box.innerHTML = "";
   state.mailList.forEach(function(email, idx){
     var chip = document.createElement("span");
     chip.className = "chip";
@@ -586,7 +568,6 @@ $("#mailOne").addEventListener("keydown", function(e){
   if (e.key === "Enter"){ e.preventDefault(); addOneEmailFromInput(); }
 });
 
-/* Open mail modal */
 $("#btnMail").addEventListener("click", function(){
   if (!state.selectedEvent) { alert("Select a session first."); return; }
   var p = state.selectedEvent.extendedProps;
@@ -608,13 +589,15 @@ $("#btnMail").addEventListener("click", function(){
   mailOverlay.style.display = "flex";
 });
 
-/* Send Mail → attributes only (no Save/Update flags) */
 $("#sendMailBtn").addEventListener("click", function(){
   if (!state.selectedEvent) { alert("Select a session first."); return; }
   if (state.mailList.length === 0){
     if (($("#mailOne").value||"").trim()){ addOneEmailFromInput(); }
   }
-  if (state.mailList.length === 0){ alert("Please add at least one email using the + button."); return; }
+  if (state.mailList.length === 0){
+    alert("Please add at least one email using the + button.");
+    return;
+  }
 
   var p = state.selectedEvent.extendedProps;
   var payload = {
@@ -630,8 +613,14 @@ $("#sendMailBtn").addEventListener("click", function(){
 
   busy(true); loading("Preparing email…");
   writeMailAttributes(payload, state.mailList.slice())
-    .then(function(){ loading("Email request sent ✓"); mailOverlay.style.display = "none"; })
-    .catch(function(err){ console.error(err); alert(err.message || "Failed to send mail request"); })
+    .then(function(){
+      loading("Email request sent ✓");
+      mailOverlay.style.display = "none";
+    })
+    .catch(function(err){
+      console.error(err);
+      alert(err.message || "Failed to send mail request");
+    })
     .finally(function(){ busy(false); });
 });
 
@@ -648,6 +637,7 @@ function openModalForDate(jsDate){
   $("#fStatus").value="Planned";
   overlay.style.display = "flex";
 }
+
 function onCreateSession(){
   var base = state.clickedDate || new Date();
   var payload = collectFormPayload(base);
@@ -655,12 +645,18 @@ function onCreateSession(){
   if (must) { alert(must); return; }
   loading("Saving…"); busy(true);
   writeAttributes(payload, { mode:"create" })
-    .then(function(){ overlay.style.display="none"; startAutoRefresh(payload.Training_Start); })
+    .then(function(){
+      overlay.style.display="none";
+      startAutoRefresh(payload.Training_Start);
+    })
     .catch(function(e){ console.error(e); alert(e.message||"Failed to save"); })
     .finally(function(){ busy(false); });
 }
+
 function onUpdateSession(){
-  if (!state.selectedEvent || !state.selectedEvent.extendedProps) { alert("No session selected for update."); return; }
+  if (!state.selectedEvent || !state.selectedEvent.extendedProps) {
+    alert("No session selected for update."); return;
+  }
   var base = state.clickedDate || new Date();
   var payload = collectFormPayload(base);
 
@@ -677,19 +673,21 @@ function onUpdateSession(){
       overlay.style.display="none";
       startAutoRefresh(payload.Update_Timestamp, function(found){
         var p = found.extendedProps || {};
-        return String(p.Training_Title||"") === String(payload.Training_Title||"")
-            && String(p.Training_Status||"") === String(payload.Training_Status||"")
-            && Number(p.Training_Start||0) === Number(payload.Training_Start||0)
-            && Number(p.Training_End||0)   === Number(payload.Training_End||0);
+        var titleOk = String(p.Training_Title||"") === String(payload.Training_Title||"");
+        var statusOk = String(p.Training_Status||"") === String(payload.Training_Status||"");
+        var startOk = Number(p.Training_Start||0) === Number(payload.Training_Start||0);
+        var endOk   = Number(p.Training_End||0)   === Number(payload.Training_End||0);
+        return titleOk && statusOk && startOk && endOk;
       });
     })
     .catch(function(e){ console.error(e); alert(e.message||"Failed to update"); })
     .finally(function(){ busy(false); });
 }
+
 function collectFormPayload(base){
   return {
     Training_Title: $("#fTitle").value.trim(),
-    Training_Operator_Name: $("#fOperator").value.trim(), // allow CSV for multiple operators
+    Training_Operator_Name: $("#fOperator").value.trim(),
     Training_Start: mergeDateTime(base, $("#fTimeTo").value),
     Training_End:   mergeDateTime(base, $("#fTimeFrom").value),
     Trainer_Name: $("#fTrainer").value.trim(),
@@ -698,6 +696,7 @@ function collectFormPayload(base){
     Training_Status: $("#fStatus").value || "Planned"
   };
 }
+
 function requiredChecks(p){
   var must = [
     ["Title", p.Training_Title],
@@ -736,9 +735,14 @@ function startCalendar(){
       state.lastRange = { start: info.start, end: info.end };
       readRangeSessions(info.start, info.end)
         .then(function(events){
-          state.lastEvents = events.slice();
-          populateFilterOptions(state.lastEvents);
-          applyFiltersAndRender(); // show with current filters (default: all)
+          state.lastEventsFull = events.slice();
+          populateFiltersFrom(events);
+          var filtered = applyFiltersTo(events);
+          state.calendar.removeAllEvents();
+          state.calendar.addEventSource(filtered);
+          $("#details").className="empty"; $("#details").textContent="Select a session on the calendar";
+          $("#sideActions").style.display="none";
+          loading("Loaded "+filtered.length+" session(s)");
         })
         .catch(function(err){
           console.error(err);
