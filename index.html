@@ -254,9 +254,8 @@ function eventContent(arg){
 
   var topic = p.Training_Topic || "Training";
 
-  return { html:
-    '<span class="sub">'+time+'</span>' +
-    '<span>'+escapeHtml(topic)+'</span>'
+return { html:
+    '<span>'+time+'    –    '+escapeHtml(topic)+'</span>'
   };
 }
 
