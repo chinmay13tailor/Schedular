@@ -55,13 +55,15 @@
   .modal label{display:block;font-size:12px;color:#475569;font-weight:800;margin:0 0 6px}
   .modal footer{display:flex;gap:10px;justify-content:flex-end;border-top:1px solid var(--ring);padding:10px 14px;border-radius:0 0 14px 14px}
 
-  /* Mail modal */
-  .mail-details{border:1px dashed var(--ring);border-radius:10px;padding:10px;font-size:13px}
+  /* Chips (reused for operator & mail) */
   .chips{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}
   .chip{display:inline-flex;align-items:center;gap:6px;padding:4px 8px;border:1px solid var(--ring);border-radius:999px;font-size:12px;background:#f8fafc}
   .chip button{border:0;background:transparent;cursor:pointer;font-weight:900;line-height:1}
-  .email-row{display:flex;gap:8px;align-items:center}
-  .email-row .input{flex:1}
+  .row-flex{display:flex;gap:8px;align-items:center}
+  .row-flex .input{flex:1}
+
+  /* Mail modal extras */
+  .mail-details{border:1px dashed var(--ring);border-radius:10px;padding:10px;font-size:13px}
   .chips-hint{font-size:12px;color:#64748b}
 </style>
 </head>
@@ -103,10 +105,19 @@
         <label>Title</label>
         <input id="fTitle" class="input" type="text" placeholder="e.g., Operational Safety">
       </div>
-      <div>
-        <label>Operator</label>
-        <input id="fOperator" class="input" type="text" placeholder="Operator name">
+
+      <!-- MULTI-OPERATOR UI -->
+      <div class="row-full">
+        <label>Operators</label>
+        <div class="row-flex">
+          <input id="fOperatorInput" class="input" type="text" placeholder="Type a name and click +">
+          <button class="btn ghost" id="addOperatorBtn" type="button">+</button>
+        </div>
+        <div id="opChips" class="chips"></div>
+        <div class="chips-hint">Add one operator at a time using “+”.</div>
       </div>
+      <!-- /MULTI-OPERATOR -->
+
       <div>
         <label>Trainer Name</label>
         <input id="fTrainer" class="input" type="text" placeholder="Trainer name">
@@ -160,7 +171,7 @@
 
       <div class="row-full">
         <label>Recipient emails</label>
-        <div class="email-row">
+        <div class="row-flex">
           <input id="mailOne" class="input" type="email" placeholder="name@company.com">
           <button class="btn ghost" id="addMailBtn" type="button">+</button>
         </div>
@@ -199,7 +210,8 @@ function $(s){ return document.querySelector(s); }
 function loading(t){ $("#loading").textContent = t || ""; }
 var state = {
   calendar:null, clickedDate:null, lastRange:null, selectedEvent:null, mode:"create",
-  mailList: []   // holds recipient emails for chips UI
+  mailList: [],     // email chips
+  opList: []        // operator chips
 };
 
 function mergeDateTime(baseDate, hhmm){
@@ -234,7 +246,6 @@ function eventContent(arg){
   };
 }
 function isValidEmail(s){
-  // Simple but effective email check
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/i.test(s || "");
 }
 
@@ -290,9 +301,7 @@ function readRangeSessions(rangeStart, rangeEnd){
 
 /************ AUTO-REFRESH LOOP (every 5s, up to 3 min) ************/
 var _autoTimer = null, _autoDeadline = 0;
-function stopAutoRefresh(){
-  if (_autoTimer) { clearInterval(_autoTimer); _autoTimer = null; }
-}
+function stopAutoRefresh(){ if (_autoTimer) { clearInterval(_autoTimer); _autoTimer = null; } }
 function startAutoRefresh(expectedTs, predicate){
   stopAutoRefresh();
   _autoDeadline = Date.now() + 3*60*1000;
@@ -396,7 +405,7 @@ function showDetails(ev){
       '<span>Status</span><span><span class="'+badgeCls+'" style="padding:2px 8px;border-radius:999px;color:#fff;">'+escapeHtml(p.Training_Status||"Planned")+'</span></span>'+
       '<span>Title</span><span>'+escapeHtml(p.Training_Title||"-")+'</span>'+
       '<span>Topic</span><span>'+escapeHtml(p.Training_Topic||"-")+'</span>'+
-      '<span>Operator</span><span>'+escapeHtml(p.Training_Operator_Name||"-")+'</span>'+
+      '<span>Operator(s)</span><span>'+escapeHtml(p.Training_Operator_Name||"-")+'</span>'+
       '<span>Trainer</span><span>'+escapeHtml(p.Trainer_Name||"-")+'</span>'+
       '<span>Machine</span><span>'+escapeHtml(p.Training_Machine||"-")+'</span>'+
       '<span>Start</span><span>'+fmt(p.Training_Start)+'</span>'+
@@ -406,16 +415,75 @@ function showDetails(ev){
   $("#sideActions").style.display = "flex";
 }
 
+/************ OPERATOR CHIPS UI ************/
+function refreshOpChips(){
+  var box = $("#opChips");
+  box.innerHTML = "";
+  state.opList.forEach(function(name, idx){
+    var chip = document.createElement("span");
+    chip.className = "chip";
+    chip.innerHTML = '<span>'+escapeHtml(name)+'</span><button type="button" aria-label="Remove">✕</button>';
+    chip.querySelector("button").addEventListener("click", function(){
+      state.opList.splice(idx, 1);
+      refreshOpChips();
+    });
+    box.appendChild(chip);
+  });
+}
+function addOneOperatorFromInput(){
+  var val = ($("#fOperatorInput").value || "").trim();
+  if (!val) return;
+  if (state.opList.includes(val)) { alert("Already added: "+val); return; }
+  state.opList.push(val);
+  $("#fOperatorInput").value = "";
+  refreshOpChips();
+}
+$("#addOperatorBtn").addEventListener("click", addOneOperatorFromInput);
+$("#fOperatorInput").addEventListener("keydown", function(e){
+  if (e.key === "Enter"){ e.preventDefault(); addOneOperatorFromInput(); }
+});
+
+/************ MAIL CHIPS UI ************/
+var mailOverlay = $("#mailOverlay");
+function refreshMailChips(){
+  var box = $("#mailChips");
+  box.innerHTML = "";
+  state.mailList.forEach(function(email, idx){
+    var chip = document.createElement("span");
+    chip.className = "chip";
+    chip.innerHTML = '<span>'+escapeHtml(email)+'</span><button type="button" aria-label="Remove">✕</button>';
+    chip.querySelector("button").addEventListener("click", function(){
+      state.mailList.splice(idx, 1);
+      refreshMailChips();
+    });
+    box.appendChild(chip);
+  });
+}
+function addOneEmailFromInput(){
+  var val = ($("#mailOne").value || "").trim();
+  if (!val) return;
+  var email = val.toLowerCase();
+  if (!isValidEmail(email)) { alert("Invalid email: "+val); return; }
+  if (state.mailList.includes(email)) { alert("Already added: "+email); return; }
+  state.mailList.push(email);
+  $("#mailOne").value = "";
+  refreshMailChips();
+}
+$("#addMailBtn").addEventListener("click", addOneEmailFromInput);
+$("#mailOne").addEventListener("keydown", function(e){
+  if (e.key === "Enter"){ e.preventDefault(); addOneEmailFromInput(); }
+});
+
 /************ MODALS + ACTIONS ************/
 var overlay = $("#overlay");
-var mailOverlay = $("#mailOverlay");
 function busy(on){
   $("#saveSession").disabled = !!on;
   $("#btnCancel").disabled   = !!on;
   $("#btnEdit").disabled     = !!on;
   $("#btnMail").disabled     = !!on;
   $("#sendMailBtn").disabled = !!on;
-  $("#addMailBtn").disabled  = !!on && $("#addMailBtn"); // guard
+  $("#addMailBtn").disabled  = !!on && $("#addMailBtn");
+  $("#addOperatorBtn").disabled = !!on && $("#addOperatorBtn");
 }
 $("#closeModal").addEventListener("click", function(){ overlay.style.display = "none"; });
 $("#closeMailModal").addEventListener("click", function(){ mailOverlay.style.display = "none"; });
@@ -435,14 +503,19 @@ $("#btnEdit").addEventListener("click", function(){
   var base = new Date(p.Training_Start);
   state.clickedDate = new Date(base.getFullYear(), base.getMonth(), base.getDate());
 
-  $("#fTitle").value    = p.Training_Title || "";
-  $("#fOperator").value = p.Training_Operator_Name || "";
+  // Prefill operator chips from existing comma-separated string
+  var opStr = p.Training_Operator_Name || "";
+  state.opList = opStr ? opStr.split(",").map(s=>s.trim()).filter(Boolean) : [];
+  refreshOpChips();
+
   $("#fTrainer").value  = p.Trainer_Name || "";
   $("#fTopic").value    = p.Training_Topic || "";
   $("#fMachine").value  = p.Training_Machine || "";
   $("#fTimeTo").value   = msToHHMM(p.Training_Start);
   $("#fTimeFrom").value = msToHHMM(p.Training_End);
   $("#fStatus").value   = p.Training_Status || "Planned";
+  $("#fTitle").value    = p.Training_Title || "";
+  $("#fOperatorInput").value = "";
   $("#fDateHint").textContent = "Date: " + state.clickedDate.toDateString();
 
   overlay.style.display = "flex";
@@ -476,39 +549,6 @@ $("#btnCancel").addEventListener("click", function(){
     .finally(()=>{ busy(false); });
 });
 
-/* --------- Send Mail flow (chips UI) ---------- */
-
-function refreshMailChips(){
-  var box = $("#mailChips");
-  box.innerHTML = "";
-  state.mailList.forEach(function(email, idx){
-    var chip = document.createElement("span");
-    chip.className = "chip";
-    chip.innerHTML = '<span>'+escapeHtml(email)+'</span><button type="button" aria-label="Remove">✕</button>';
-    chip.querySelector("button").addEventListener("click", function(){
-      state.mailList.splice(idx, 1);
-      refreshMailChips();
-    });
-    box.appendChild(chip);
-  });
-}
-
-function addOneEmailFromInput(){
-  var val = ($("#mailOne").value || "").trim();
-  if (!val) return;
-  var email = val.toLowerCase();
-  if (!isValidEmail(email)) { alert("Invalid email: "+val); return; }
-  if (state.mailList.includes(email)) { alert("Already added: "+email); return; }
-  state.mailList.push(email);
-  $("#mailOne").value = "";
-  refreshMailChips();
-}
-
-$("#addMailBtn").addEventListener("click", addOneEmailFromInput);
-$("#mailOne").addEventListener("keydown", function(e){
-  if (e.key === "Enter"){ e.preventDefault(); addOneEmailFromInput(); }
-});
-
 /* Open mail modal */
 $("#btnMail").addEventListener("click", function(){
   if (!state.selectedEvent) { alert("Select a session first."); return; }
@@ -516,7 +556,7 @@ $("#btnMail").addEventListener("click", function(){
   var fmt = v => v ? new Date(Number(v)).toLocaleString() : "-";
   var html =
     '<div><strong>Title:</strong> '   + escapeHtml(p.Training_Title||"-") + '</div>'+
-    '<div><strong>Operator:</strong> '+ escapeHtml(p.Training_Operator_Name||"-") + '</div>'+
+    '<div><strong>Operator(s):</strong> '+ escapeHtml(p.Training_Operator_Name||"-") + '</div>'+
     '<div><strong>Trainer:</strong> ' + escapeHtml(p.Trainer_Name||"-") + '</div>'+
     '<div><strong>Topic:</strong> '   + escapeHtml(p.Training_Topic||"-") + '</div>'+
     '<div><strong>Machine:</strong> ' + escapeHtml(p.Training_Machine||"-") + '</div>'+
@@ -525,7 +565,7 @@ $("#btnMail").addEventListener("click", function(){
     '<div><strong>End:</strong> '     + fmt(p.Training_End) + '</div>';
   $("#mailDetailsBox").innerHTML = html;
 
-  state.mailList = [];   // reset chips
+  state.mailList = [];
   refreshMailChips();
   $("#mailOne").value = "";
   mailOverlay.style.display = "flex";
@@ -535,7 +575,6 @@ $("#btnMail").addEventListener("click", function(){
 $("#sendMailBtn").addEventListener("click", function(){
   if (!state.selectedEvent) { alert("Select a session first."); return; }
   if (state.mailList.length === 0){
-    // try adding what's typed if any
     if (($("#mailOne").value||"").trim()){
       addOneEmailFromInput();
     }
@@ -577,10 +616,12 @@ function openModalForDate(jsDate){
   $("#modalTitle").textContent = "Add training session";
   $("#saveSession").textContent = "Save";
   $("#fDateHint").textContent = "Date: " + state.clickedDate.toDateString();
-  $("#fTitle").value=""; $("#fOperator").value=""; $("#fTrainer").value="";
-  $("#fTopic").value=""; $("#fMachine").value="";
-  $("#fTimeTo").value="09:00"; $("#fTimeFrom").value="11:00";
-  $("#fStatus").value="Planned";
+  $("#fTitle").value=""; $("#fTrainer").value=""; $("#fTopic").value=""; $("#fMachine").value="";
+  $("#fTimeTo").value="09:00"; $("#fTimeFrom").value="11:00"; $("#fStatus").value="Planned";
+  // reset operator chips
+  state.opList = [];
+  $("#fOperatorInput").value = "";
+  refreshOpChips();
   overlay.style.display = "flex";
 }
 
@@ -623,7 +664,8 @@ function onUpdateSession(){
         var statusOk = String(p.Training_Status||"") === String(payload.Training_Status||"");
         var startOk = Number(p.Training_Start||0) === Number(payload.Training_Start||0);
         var endOk   = Number(p.Training_End||0)   === Number(payload.Training_End||0);
-        return titleOk && statusOk && startOk && endOk;
+        var opOk    = String(p.Training_Operator_Name||"") === String(payload.Training_Operator_Name||"");
+        return titleOk && statusOk && startOk && endOk && opOk;
       });
     })
     .catch(function(e){ console.error(e); alert(e.message||"Failed to update"); })
@@ -633,7 +675,7 @@ function onUpdateSession(){
 function collectFormPayload(base){
   return {
     Training_Title: $("#fTitle").value.trim(),
-    Training_Operator_Name: $("#fOperator").value.trim(),
+    Training_Operator_Name: state.opList.join(", "), // <-- multi-operator as CSV
     Training_Start: mergeDateTime(base, $("#fTimeTo").value),
     Training_End:   mergeDateTime(base, $("#fTimeFrom").value),
     Trainer_Name: $("#fTrainer").value.trim(),
@@ -644,14 +686,12 @@ function collectFormPayload(base){
 }
 
 function requiredChecks(p){
-  var must = [
-    ["Title", p.Training_Title],
-    ["Operator", p.Training_Operator_Name],
-    ["Trainer Name", p.Trainer_Name],
-    ["Training Topic", p.Training_Topic],
-    ["Training Machine", p.Training_Machine]
-  ];
-  for (var i=0;i<must.length;i++){ if(!must[i][1]) return "Please enter "+must[i][0]; }
+  if (!p.Training_Title) return "Please enter Title";
+  if (!state.opList.length && !($("#fOperatorInput").value||"").trim())
+    return "Please add at least one Operator (use the + button)";
+  if (!p.Trainer_Name) return "Please enter Trainer Name";
+  if (!p.Training_Topic) return "Please enter Training Topic";
+  if (!p.Training_Machine) return "Please enter Training Machine";
   if (p.Training_End <= p.Training_Start) return "Time From must be after Time To.";
   return "";
 }
