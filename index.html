@@ -148,7 +148,7 @@ var JWT       = new URLSearchParams(location.search).get("token")  || "";
 var ATTR_SAVE_FLAG    = "Save_Button";       // only on CREATE
 var ATTR_UPDATE_FLAG  = "Update_Buttton";    // exact spelling, on UPDATE/CANCEL
 
-// Telemetry keys we read (no Save_Button here)
+// Telemetry keys we read
 var KEYS = [
   "Training_Title","Training_Operator_Name","Training_Start","Training_End",
   "Trainer_Name","Training_Topic","Training_Machine","Training_Status"
@@ -242,6 +242,40 @@ function readRangeSessions(rangeStart, rangeEnd){
     });
 }
 
+/************ SMART POLLING ************/
+function waitForTelemetry(expectedTs, predicate, maxWait){
+  return new Promise((resolve, reject)=>{
+    var start = Date.now();
+    var timeout = maxWait || 8000;   // overall max wait
+    var interval = 700;              // poll cadence
+
+    function tick(){
+      if (!state.lastRange){ return reject(new Error("No calendar range to poll")); }
+      readRangeSessions(state.lastRange.start, state.lastRange.end)
+        .then(function(events){
+          // find session with the expected base timestamp
+          var found = events.find(ev => String(ev.extendedProps.__ts) === String(expectedTs));
+          if (found){
+            if (typeof predicate === "function"){
+              try{
+                if (predicate(found)) return resolve(events);
+              }catch(e){ /* ignore predicate errors, keep polling */ }
+            }else{
+              return resolve(events);
+            }
+          }
+          if (Date.now() - start > timeout) return reject(new Error("Timeout waiting for telemetry update"));
+          setTimeout(tick, interval);
+        })
+        .catch(function(e){
+          if (Date.now() - start > timeout) return reject(e);
+          setTimeout(tick, interval);
+        });
+    }
+    tick();
+  });
+}
+
 /************ WRITE (attributes) ************/
 function writeAttributes(session, opts){
   if(!JWT) return Promise.reject(new Error("Missing JWT (?token=)"));
@@ -259,7 +293,7 @@ function writeAttributes(session, opts){
   };
 
   if (opts && opts.mode === "create") {
-    body[ATTR_SAVE_FLAG] = false; // used by your rule-chain; not shown
+    body[ATTR_SAVE_FLAG] = false; // signal for your rule-chain
   } else if (opts && (opts.mode === "update" || opts.mode === "cancel")) {
     body[ATTR_UPDATE_FLAG] = true;
     if (session.Update_Timestamp) body.Update_Timestamp = session.Update_Timestamp;
@@ -297,6 +331,11 @@ function showDetails(ev){
 
 /************ MODAL + ACTIONS ************/
 var overlay = $("#overlay");
+function busy(on){
+  $("#saveSession").disabled = !!on;
+  $("#btnCancel").disabled   = !!on;
+  $("#btnEdit").disabled     = !!on;
+}
 $("#closeModal").addEventListener("click", function(){ overlay.style.display = "none"; });
 
 $("#saveSession").addEventListener("click", function(){
@@ -344,10 +383,17 @@ $("#btnCancel").addEventListener("click", function(){
     Update_Timestamp: p.__ts
   };
 
-  loading("Cancelling…");
+  loading("Cancelling…"); busy(true);
   writeAttributes(payload, { mode: "cancel" })
-    .then(afterWriteRefresh)
-    .catch(err => { console.error(err); alert(err.message||"Failed to cancel"); loading(""); });
+    .then(function(){
+      // poll for the updated row at Update_Timestamp and status=Cancelled
+      return waitForTelemetry(payload.Update_Timestamp, function(found){
+        return (found.extendedProps.Training_Status === "Cancelled");
+      }, 10000);
+    })
+    .then(renderEventsAndReset)
+    .catch(err => { console.error(err); alert(err.message||"Failed to cancel"); })
+    .finally(()=>{ busy(false); loading(""); });
 });
 
 function openModalForDate(jsDate){
@@ -368,10 +414,18 @@ function onCreateSession(){
   var payload = collectFormPayload(base);
   var must = requiredChecks(payload);
   if (must) { alert(must); return; }
-  loading("Saving…");
+  loading("Saving…"); busy(true);
   writeAttributes(payload, { mode:"create" })
-    .then(function(){ overlay.style.display="none"; afterWriteRefresh(); })
-    .catch(function(e){ console.error(e); alert(e.message||"Failed to save"); loading(""); });
+    .then(function(){
+      // The rule-chain writes telemetry at ts = Training_Start
+      return waitForTelemetry(payload.Training_Start, null, 10000);
+    })
+    .then(function(events){
+      overlay.style.display="none";
+      renderEventsAndReset(events);
+    })
+    .catch(function(e){ console.error(e); alert(e.message||"Failed to save"); })
+    .finally(function(){ busy(false); loading(""); });
 }
 
 function onUpdateSession(){
@@ -388,10 +442,40 @@ function onUpdateSession(){
   var must = requiredChecks(payload);
   if (must) { alert(must); return; }
 
-  loading("Updating…");
+  loading("Updating…"); busy(true);
   writeAttributes(payload, { mode:"update" })
-    .then(function(){ overlay.style.display="none"; afterWriteRefresh(); })
-    .catch(function(e){ console.error(e); alert(e.message||"Failed to update"); loading(""); });
+    .then(function(){
+      // poll for the updated row at Update_Timestamp and (optionally) ensure a field changed:
+      return waitForTelemetry(payload.Update_Timestamp, function(found){
+        // Example predicate: title OR status matches the just-sent values
+        var p = found.extendedProps;
+        return (p.Training_Title === payload.Training_Title) &&
+               (p.Training_Status === payload.Training_Status) &&
+               (p.Training_Start === payload.Training_Start) &&
+               (p.Training_End   === payload.Training_End);
+      }, 10000);
+    })
+    .then(function(events){
+      overlay.style.display="none";
+      renderEventsAndReset(events);
+    })
+    .catch(function(e){ console.error(e); alert(e.message||"Failed to update"); })
+    .finally(function(){ busy(false); loading(""); });
+}
+
+function renderEventsAndReset(events){
+  if (!events){
+    // safety: if no events passed from poll, refetch once
+    if (state.lastRange){
+      return readRangeSessions(state.lastRange.start, state.lastRange.end).then(renderEventsAndReset);
+    }
+    return;
+  }
+  state.calendar.removeAllEvents();
+  state.calendar.addEventSource(events);
+  $("#details").className="empty"; $("#details").textContent="Select a session on the calendar";
+  $("#sideActions").style.display="none";
+  loading("Loaded "+events.length+" session(s)");
 }
 
 function collectFormPayload(base){
@@ -418,21 +502,6 @@ function requiredChecks(p){
   for (var i=0;i<must.length;i++){ if(!must[i][1]) return "Please enter "+must[i][0]; }
   if (p.Training_End <= p.Training_Start) return "Time From must be after Time To.";
   return "";
-}
-
-function afterWriteRefresh(){
-  setTimeout(function(){
-    if (state.lastRange){
-      loading("Refreshing…");
-      readRangeSessions(state.lastRange.start, state.lastRange.end).then(function(events){
-        state.calendar.removeAllEvents();
-        state.calendar.addEventSource(events);
-        $("#details").className="empty"; $("#details").textContent="Select a session on the calendar";
-        $("#sideActions").style.display="none";
-        loading("Loaded "+events.length+" session(s)");
-      }).catch(function(e){ console.error(e); loading(e.message||"Failed to load"); });
-    } else { loading(""); }
-  }, 1200);
 }
 
 /************ BOOT ************/
