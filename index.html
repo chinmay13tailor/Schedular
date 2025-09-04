@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
-<title>PlantWiz • Training Calendar</title>
+<title>Training Calendar</title>
 
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.11/index.global.min.css">
 <style>
@@ -12,8 +12,9 @@
   *{box-sizing:border-box}
   body{margin:0;background:#fff;color:var(--text);font:14px/1.45 system-ui,-apple-system,Segoe UI,Roboto,Arial}
   .app{display:grid;grid-template-columns:1fr 320px;gap:16px;min-height:100vh;padding:16px}
+  /* Top status bar (no heading) */
   header{grid-column:1/-1;display:flex;gap:10px;align-items:center;border:1px solid var(--ring);border-radius:12px;background:#fff;padding:10px 12px}
-  .brand{font-weight:800}.spacer{flex:1}
+  .spacer{flex:1}
   .btn,.input,textarea,select{border:1px solid var(--ring);border-radius:10px;background:#fff;padding:8px 10px}
   .btn{cursor:pointer;font-weight:800}
   .btn.primary{background:linear-gradient(#3b82f6,#2563eb);color:#fff;border:0}
@@ -70,8 +71,8 @@
 </head>
 <body>
 <div class="app">
+  <!-- status bar (only the live counter on the right) -->
   <header>
-    <div class="brand">PlantWiz • Training Calendar</div>
     <div class="spacer"></div>
     <span id="loading"></span>
   </header>
@@ -195,10 +196,10 @@ var DEVICE_ID = "991cf500-661a-11f0-90f1-775fee303094";
 var JWT       = new URLSearchParams(location.search).get("token")  || "";
 
 // Flags (used by rule-chain, not shown in UI)
-var ATTR_SAVE_FLAG    = "Save_Button";       // only on CREATE
-var ATTR_UPDATE_FLAG  = "Update_Buttton";    // exact spelling, on UPDATE/CANCEL
-var ATTR_SEND_MAIL    = "Send_Mail";         // for mail trigger
-var ATTR_TRAINING_MAILS = "Training_mails";  // list of recipients
+var ATTR_SAVE_FLAG    = "Save_Button";
+var ATTR_UPDATE_FLAG  = "Update_Buttton";
+var ATTR_SEND_MAIL    = "Send_Mail";
+var ATTR_TRAINING_MAILS = "Training_mails";
 
 // Telemetry keys we read
 var KEYS = [
@@ -212,9 +213,8 @@ function loading(t){ $("#loading").textContent = t || ""; }
 var state = {
   calendar:null, clickedDate:null, lastRange:null, selectedEvent:null, mode:"create",
   mailList: [],
-  // filters
   filters: { op: "__ALL__", tr: "__ALL__", ma: "__ALL__" },
-  lastEventsFull: [] // the full (unfiltered) events for the current range
+  lastEventsFull: []
 };
 
 function mergeDateTime(baseDate, hhmm){
@@ -248,11 +248,9 @@ function eventContent(arg){
     '<span class="tiny">'+escapeHtml(p.Training_Operator_Name || "")+'</span>'
   };
 }
-function isValidEmail(s){
-  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/i.test(s || "");
-}
+function isValidEmail(s){ return /^[^\s@]+@[^\s@]+\.[^\s@]+$/i.test(s || ""); }
 
-/************ READ (telemetry) ************/
+/************ READ ************/
 function readRangeSessions(rangeStart, rangeEnd){
   if(!JWT){ return Promise.reject(new Error("Missing JWT (?token=)")); }
   var url = API_BASE + "/plugins/telemetry/DEVICE/" + DEVICE_ID + "/values/timeseries"
@@ -304,7 +302,6 @@ function readRangeSessions(rangeStart, rangeEnd){
 
 /************ FILTERS ************/
 function populateFiltersFrom(events){
-  // collect uniques
   var ops = new Set(), trs = new Set(), mas = new Set();
   events.forEach(ev=>{
     var p = ev.extendedProps||{};
@@ -317,7 +314,6 @@ function populateFiltersFrom(events){
     var val = el.value || "__ALL__";
     el.innerHTML = '<option value="__ALL__">All</option>' +
       Array.from(set).sort().map(v=>'<option>'+escapeHtml(v)+'</option>').join('');
-    // keep previous selection if possible
     if ([...set].includes(val)) el.value = val; else el.value="__ALL__";
   }
   fillSelect("#filtOp", ops); fillSelect("#filtTr", trs); fillSelect("#filtMa", mas);
@@ -348,24 +344,17 @@ $("#btnResetFilters").addEventListener("click", function(){
   loading("Loaded "+state.lastEventsFull.length+" session(s)");
 });
 
-/************ AUTO-REFRESH LOOP (every 5s, up to 3 min) ************/
+/************ AUTO-REFRESH (every 5s, 3 min max) ************/
 var _autoTimer = null, _autoDeadline = 0;
-function stopAutoRefresh(){
-  if (_autoTimer) { clearInterval(_autoTimer); _autoTimer = null; }
-}
+function stopAutoRefresh(){ if (_autoTimer) { clearInterval(_autoTimer); _autoTimer = null; } }
 function startAutoRefresh(expectedTs, predicate){
   stopAutoRefresh();
   _autoDeadline = Date.now() + 3*60*1000;
   _autoTimer = setInterval(function(){
-    if (Date.now() > _autoDeadline) {
-      stopAutoRefresh();
-      loading("Stopped: timeout waiting for telemetry update");
-      return;
-    }
+    if (Date.now() > _autoDeadline) { stopAutoRefresh(); loading("Stopped: timeout waiting for telemetry update"); return; }
     if (!state.lastRange) return;
     readRangeSessions(state.lastRange.start, state.lastRange.end)
       .then(function(events){
-        // store full and apply current filters
         state.lastEventsFull = events.slice();
         populateFiltersFrom(events);
         var filtered = applyFiltersTo(events);
@@ -384,18 +373,14 @@ function startAutoRefresh(expectedTs, predicate){
           }
         }
       })
-      .catch(function(err){
-        console.error(err);
-        loading("Auto-refresh error: "+(err.message||err));
-      });
+      .catch(function(err){ console.error(err); loading("Auto-refresh error: "+(err.message||err)); });
   }, 5000);
 }
 
-/************ WRITE (attributes) ************/
+/************ WRITE ************/
 function writeAttributes(session, opts){
   if(!JWT) return Promise.reject(new Error("Missing JWT (?token=)"));
   var url = API_BASE + "/plugins/telemetry/DEVICE/" + DEVICE_ID + "/SERVER_SCOPE";
-
   var body = {
     Training_Title:         session.Training_Title,
     Training_Operator_Name: session.Training_Operator_Name,
@@ -406,26 +391,21 @@ function writeAttributes(session, opts){
     Training_Machine:       session.Training_Machine,
     Training_Status:        session.Training_Status || "Planned"
   };
-
   if (opts && opts.mode === "create") {
     body[ATTR_SAVE_FLAG] = false;
   } else if (opts && (opts.mode === "update" || opts.mode === "cancel")) {
     body[ATTR_UPDATE_FLAG] = true;
     if (session.Update_Timestamp) body.Update_Timestamp = session.Update_Timestamp;
   }
-
   return fetch(url, {
     method: "POST",
     headers: { "X-Authorization": "Bearer " + JWT, "Content-Type": "application/json" },
     body: JSON.stringify(body)
   }).then(res => res.ok ? null : res.text().then(t => { throw new Error("Attribute write failed: "+t); }));
 }
-
-/* WRITE (mail trigger): ONLY Send_Mail + Training_mails + training fields */
 function writeMailAttributes(session, recipients){
   if(!JWT) return Promise.reject(new Error("Missing JWT (?token=)"));
   var url = API_BASE + "/plugins/telemetry/DEVICE/" + DEVICE_ID + "/SERVER_SCOPE";
-
   var body = {
     Training_Title:         session.Training_Title || "",
     Training_Operator_Name: session.Training_Operator_Name || "",
@@ -435,8 +415,8 @@ function writeMailAttributes(session, recipients){
     Training_Topic:         session.Training_Topic || "",
     Training_Machine:       session.Training_Machine || "",
     Training_Status:        session.Training_Status || "Planned",
-    [ATTR_SEND_MAIL]:       true,
-    [ATTR_TRAINING_MAILS]:  recipients
+    Send_Mail:              true,
+    Training_mails:         recipients
   };
   return fetch(url, {
     method: "POST",
@@ -445,7 +425,7 @@ function writeMailAttributes(session, recipients){
   }).then(res => res.ok ? null : res.text().then(t => { throw new Error("Mail attribute write failed: "+t); }));
 }
 
-/************ DETAILS + ACTION BUTTONS ************/
+/************ DETAILS ************/
 function showDetails(ev){
   state.selectedEvent = ev;
   var p = ev.extendedProps;
@@ -464,7 +444,6 @@ function showDetails(ev){
       '<span>Start</span><span>'+fmt(p.Training_Start)+'</span>'+
       '<span>End</span><span>'+fmt(p.Training_End)+'</span>'+
     '</div>';
-
   $("#sideActions").style.display = "flex";
 }
 
@@ -538,35 +517,28 @@ $("#btnCancel").addEventListener("click", function(){
     .finally(()=>{ busy(false); });
 });
 
-/* --------- Send Mail flow (chips UI) ---------- */
+/* Email chips */
 function refreshMailChips(){
-  var box = $("#mailChips");
-  box.innerHTML = "";
+  var box = $("#mailChips"); box.innerHTML = "";
   state.mailList.forEach(function(email, idx){
     var chip = document.createElement("span");
     chip.className = "chip";
     chip.innerHTML = '<span>'+escapeHtml(email)+'</span><button type="button" aria-label="Remove">✕</button>';
     chip.querySelector("button").addEventListener("click", function(){
-      state.mailList.splice(idx, 1);
-      refreshMailChips();
+      state.mailList.splice(idx, 1); refreshMailChips();
     });
     box.appendChild(chip);
   });
 }
 function addOneEmailFromInput(){
-  var val = ($("#mailOne").value || "").trim();
-  if (!val) return;
+  var val = ($("#mailOne").value || "").trim(); if (!val) return;
   var email = val.toLowerCase();
   if (!isValidEmail(email)) { alert("Invalid email: "+val); return; }
   if (state.mailList.includes(email)) { alert("Already added: "+email); return; }
-  state.mailList.push(email);
-  $("#mailOne").value = "";
-  refreshMailChips();
+  state.mailList.push(email); $("#mailOne").value = ""; refreshMailChips();
 }
 $("#addMailBtn").addEventListener("click", addOneEmailFromInput);
-$("#mailOne").addEventListener("keydown", function(e){
-  if (e.key === "Enter"){ e.preventDefault(); addOneEmailFromInput(); }
-});
+$("#mailOne").addEventListener("keydown", function(e){ if (e.key === "Enter"){ e.preventDefault(); addOneEmailFromInput(); } });
 
 $("#btnMail").addEventListener("click", function(){
   if (!state.selectedEvent) { alert("Select a session first."); return; }
@@ -582,22 +554,13 @@ $("#btnMail").addEventListener("click", function(){
     '<div><strong>Start:</strong> '   + fmt(p.Training_Start) + '</div>'+
     '<div><strong>End:</strong> '     + fmt(p.Training_End) + '</div>';
   $("#mailDetailsBox").innerHTML = html;
-
-  state.mailList = [];
-  refreshMailChips();
-  $("#mailOne").value = "";
-  mailOverlay.style.display = "flex";
+  state.mailList = []; refreshMailChips(); $("#mailOne").value = ""; mailOverlay.style.display = "flex";
 });
 
 $("#sendMailBtn").addEventListener("click", function(){
   if (!state.selectedEvent) { alert("Select a session first."); return; }
-  if (state.mailList.length === 0){
-    if (($("#mailOne").value||"").trim()){ addOneEmailFromInput(); }
-  }
-  if (state.mailList.length === 0){
-    alert("Please add at least one email using the + button.");
-    return;
-  }
+  if (state.mailList.length === 0){ if (($("#mailOne").value||"").trim()){ addOneEmailFromInput(); } }
+  if (state.mailList.length === 0){ alert("Please add at least one email using the + button."); return; }
 
   var p = state.selectedEvent.extendedProps;
   var payload = {
@@ -613,14 +576,8 @@ $("#sendMailBtn").addEventListener("click", function(){
 
   busy(true); loading("Preparing email…");
   writeMailAttributes(payload, state.mailList.slice())
-    .then(function(){
-      loading("Email request sent ✓");
-      mailOverlay.style.display = "none";
-    })
-    .catch(function(err){
-      console.error(err);
-      alert(err.message || "Failed to send mail request");
-    })
+    .then(function(){ loading("Email request sent ✓"); mailOverlay.style.display = "none"; })
+    .catch(function(err){ console.error(err); alert(err.message || "Failed to send mail request"); })
     .finally(function(){ busy(false); });
 });
 
@@ -637,7 +594,6 @@ function openModalForDate(jsDate){
   $("#fStatus").value="Planned";
   overlay.style.display = "flex";
 }
-
 function onCreateSession(){
   var base = state.clickedDate || new Date();
   var payload = collectFormPayload(base);
@@ -645,45 +601,33 @@ function onCreateSession(){
   if (must) { alert(must); return; }
   loading("Saving…"); busy(true);
   writeAttributes(payload, { mode:"create" })
-    .then(function(){
-      overlay.style.display="none";
-      startAutoRefresh(payload.Training_Start);
-    })
+    .then(function(){ overlay.style.display="none"; startAutoRefresh(payload.Training_Start); })
     .catch(function(e){ console.error(e); alert(e.message||"Failed to save"); })
     .finally(function(){ busy(false); });
 }
-
 function onUpdateSession(){
-  if (!state.selectedEvent || !state.selectedEvent.extendedProps) {
-    alert("No session selected for update."); return;
-  }
+  if (!state.selectedEvent || !state.selectedEvent.extendedProps) { alert("No session selected for update."); return; }
   var base = state.clickedDate || new Date();
   var payload = collectFormPayload(base);
-
   var baseTs = state.selectedEvent.extendedProps.__ts;
   if (!baseTs) { alert("Missing base timestamp for update. Please reselect the event."); return; }
   payload.Update_Timestamp = baseTs;
-
-  var must = requiredChecks(payload);
-  if (must) { alert(must); return; }
-
+  var must = requiredChecks(payload); if (must) { alert(must); return; }
   loading("Updating…"); busy(true);
   writeAttributes(payload, { mode:"update" })
     .then(function(){
       overlay.style.display="none";
       startAutoRefresh(payload.Update_Timestamp, function(found){
         var p = found.extendedProps || {};
-        var titleOk = String(p.Training_Title||"") === String(payload.Training_Title||"");
-        var statusOk = String(p.Training_Status||"") === String(payload.Training_Status||"");
-        var startOk = Number(p.Training_Start||0) === Number(payload.Training_Start||0);
-        var endOk   = Number(p.Training_End||0)   === Number(payload.Training_End||0);
-        return titleOk && statusOk && startOk && endOk;
+        return String(p.Training_Title||"") === String(payload.Training_Title||"")
+            && String(p.Training_Status||"") === String(payload.Training_Status||"")
+            && Number(p.Training_Start||0)   === Number(payload.Training_Start||0)
+            && Number(p.Training_End||0)     === Number(payload.Training_End||0);
       });
     })
     .catch(function(e){ console.error(e); alert(e.message||"Failed to update"); })
     .finally(function(){ busy(false); });
 }
-
 function collectFormPayload(base){
   return {
     Training_Title: $("#fTitle").value.trim(),
@@ -696,7 +640,6 @@ function collectFormPayload(base){
     Training_Status: $("#fStatus").value || "Planned"
   };
 }
-
 function requiredChecks(p){
   var must = [
     ["Title", p.Training_Title],
