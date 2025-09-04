@@ -14,7 +14,7 @@
   .app{display:grid;grid-template-columns:1fr 320px;gap:16px;min-height:100vh;padding:16px}
   header{grid-column:1/-1;display:flex;gap:10px;align-items:center;border:1px solid var(--ring);border-radius:12px;background:#fff;padding:10px 12px}
   .brand{font-weight:800}.spacer{flex:1}
-  .btn,.input{border:1px solid var(--ring);border-radius:10px;background:#fff;padding:8px 10px}
+  .btn,.input,textarea{border:1px solid var(--ring);border-radius:10px;background:#fff;padding:8px 10px}
   .btn{cursor:pointer;font-weight:800}
   .btn.primary{background:linear-gradient(#3b82f6,#2563eb);color:#fff;border:0}
   .btn.danger{border-color:var(--red);color:#dc2626}
@@ -27,7 +27,7 @@
   .h6{margin:0 0 10px;font-weight:900}
   .kpi{display:grid;grid-template-columns:120px 1fr;gap:8px;font-size:13px}
   .kpi span:first-child{color:#64748b}
-  .side-actions{display:flex;gap:8px;margin-top:12px}
+  .side-actions{display:flex;gap:8px;margin-top:12px;flex-wrap:wrap}
   footer{grid-column:1/-1;color:#64748b;font-size:12px;text-align:center}
 
   .fc .fc-toolbar{padding:10px}
@@ -43,23 +43,28 @@
   .sub{display:block;font-weight:600;opacity:.95}
   .tiny{display:block;font-weight:600;opacity:.8;font-size:12px}
 
-  .muted{color:var(--muted)} #loading{font-size:12px;color:#64748b;margin-left:8px}
+  .muted{color:#64748b} #loading{font-size:12px;color:#64748b;margin-left:8px}
   .success{color:#16a34a}.err{color:#dc2626;font-weight:700}
 
+  /* Modal base */
   .overlay{position:fixed;inset:0;background:rgba(15,23,42,.35);display:none;align-items:center;justify-content:center;z-index:50}
-  .modal{width:min(520px,92vw);background:#fff;border:1px solid var(--ring);border-radius:14px;box-shadow:0 24px 48px rgba(0,0,0,.18)}
+  .modal{width:min(560px,92vw);background:#fff;border:1px solid var(--ring);border-radius:14px;box-shadow:0 24px 48px rgba(0,0,0,.18)}
   .modal header{display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid var(--ring);padding:12px 14px;border-radius:14px 14px 0 0}
   .modal .body{padding:14px;display:grid;grid-template-columns:1fr 1fr;gap:10px}
   .modal .row-full{grid-column:1 / -1}
   .modal label{display:block;font-size:12px;color:#475569;font-weight:800;margin:0 0 6px}
   .modal footer{display:flex;gap:10px;justify-content:flex-end;border-top:1px solid var(--ring);padding:10px 14px;border-radius:0 0 14px 14px}
+
+  /* Mail modal tweaks */
+  .mail-details{border:1px dashed var(--ring);border-radius:10px;padding:10px;font-size:13px}
+  .chips-hint{font-size:12px;color:#64748b}
 </style>
 </head>
 <body>
 <div class="app">
   <header>
     <div class="brand">PlantWiz • Training Calendar</div>
-    <span class="muted">Create → <code>Save_Button=false</code>. Update/Cancel → <code>Update_Buttton=true</code> + <code>Update_Timestamp=base ts</code>. Auto-refresh after actions.</span>
+    <span class="muted">Create → <code>Save_Button=false</code>. Update/Cancel → <code>Update_Buttton=true</code> + <code>Update_Timestamp</code>. “Send Mail” writes <code>Send_Mail=true</code> only.</span>
     <div class="spacer"></div>
     <span id="loading"></span>
   </header>
@@ -72,6 +77,7 @@
     <div class="side-actions" id="sideActions" style="display:none">
       <button class="btn danger"  id="btnCancel" type="button">Cancel training</button>
       <button class="btn ghost"   id="btnEdit"   type="button">Update</button>
+      <button class="btn primary" id="btnMail"   type="button">Send Mail</button>
     </div>
   </aside>
 
@@ -80,7 +86,7 @@
   </footer>
 </div>
 
-<!-- Modal -->
+<!-- Create/Update Modal -->
 <div class="overlay" id="overlay">
   <div class="modal">
     <header>
@@ -117,7 +123,6 @@
         <input id="fMachine" class="input" type="text" placeholder="e.g., LATHE-02">
       </div>
 
-      <!-- Training Status (only the 3 allowed) -->
       <div class="row-full">
         <label>Training Status</label>
         <select id="fStatus" class="input">
@@ -136,6 +141,31 @@
   </div>
 </div>
 
+<!-- Send Mail Modal -->
+<div class="overlay" id="mailOverlay">
+  <div class="modal">
+    <header>
+      <div style="font-weight:900">Send Training Details by Email</div>
+      <button class="btn" id="closeMailModal" type="button">Close</button>
+    </header>
+    <div class="body">
+      <div class="row-full">
+        <div class="mail-details" id="mailDetailsBox">
+          <!-- training summary will be injected here -->
+        </div>
+      </div>
+      <div class="row-full">
+        <label>Recipient emails</label>
+        <textarea id="mailInput" rows="3" class="input" placeholder="Add one or more email IDs, separated by comma or space"></textarea>
+        <div class="chips-hint">Example: ops@plant.com, trainer@plant.com</div>
+      </div>
+    </div>
+    <footer>
+      <button class="btn primary" id="sendMailBtn" type="button">Send</button>
+    </footer>
+  </div>
+</div>
+
 <script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.11/index.global.min.js"></script>
 <script>
 /************ CONFIG ************/
@@ -147,6 +177,8 @@ var JWT       = new URLSearchParams(location.search).get("token")  || "";
 // Flags (used by rule-chain, not shown in UI)
 var ATTR_SAVE_FLAG    = "Save_Button";       // only on CREATE
 var ATTR_UPDATE_FLAG  = "Update_Buttton";    // exact spelling, on UPDATE/CANCEL
+var ATTR_SEND_MAIL    = "Send_Mail";         // for mail trigger
+var ATTR_TRAINING_MAILS = "Training_mails";  // list of recipients
 
 // Telemetry keys we read
 var KEYS = [
@@ -155,12 +187,10 @@ var KEYS = [
 ];
 
 /************ HELPERS ************/
-// DOM & state
 function $(s){ return document.querySelector(s); }
 function loading(t){ $("#loading").textContent = t || ""; }
 var state = { calendar:null, clickedDate:null, lastRange:null, selectedEvent:null, mode:"create" };
 
-// time utils
 function mergeDateTime(baseDate, hhmm){
   var parts = String(hhmm||"00:00").split(":");
   var h = parseInt(parts[0]||"0",10), m = parseInt(parts[1]||"0",10);
@@ -250,7 +280,6 @@ function stopAutoRefresh(){
 }
 function startAutoRefresh(expectedTs, predicate){
   stopAutoRefresh();
-  // give rule-chain up to 3 minutes to mirror / update
   _autoDeadline = Date.now() + 3*60*1000;
   _autoTimer = setInterval(function(){
     if (Date.now() > _autoDeadline) {
@@ -261,31 +290,20 @@ function startAutoRefresh(expectedTs, predicate){
     if (!state.lastRange) return;
     readRangeSessions(state.lastRange.start, state.lastRange.end)
       .then(function(events){
-        // Repaint calendar on every tick so user sees new items ASAP
         state.calendar.removeAllEvents();
         state.calendar.addEventSource(events);
         $("#details").className="empty"; $("#details").textContent="Select a session on the calendar";
         $("#sideActions").style.display="none";
         loading("Auto-refreshing…");
-
-        // If we know which row we expect, check it
         if (expectedTs != null){
           var found = events.find(ev => String(ev.extendedProps.__ts) === String(expectedTs));
           if (found){
             if (typeof predicate === "function") {
-              try {
-                if (predicate(found)) {
-                  stopAutoRefresh();
-                  loading("Update detected ✓");
-                }
-              } catch(e) { /* ignore */ }
-            } else {
-              stopAutoRefresh();
-              loading("Update detected ✓");
-            }
+              try { if (predicate(found)) { stopAutoRefresh(); loading("Update detected ✓"); } }
+              catch(e){}
+            } else { stopAutoRefresh(); loading("Update detected ✓"); }
           }
         } else {
-          // if no expectedTs provided, a single tick is enough
           stopAutoRefresh();
         }
       })
@@ -293,7 +311,7 @@ function startAutoRefresh(expectedTs, predicate){
         console.error(err);
         loading("Auto-refresh error: "+(err.message||err));
       });
-  }, 5000); // every 5 seconds
+  }, 5000);
 }
 
 /************ WRITE (attributes) ************/
@@ -326,6 +344,30 @@ function writeAttributes(session, opts){
   }).then(res => res.ok ? null : res.text().then(t => { throw new Error("Attribute write failed: "+t); }));
 }
 
+/* WRITE (mail trigger): ONLY Send_Mail + Training_mails + training fields (NO Save/Update flags) */
+function writeMailAttributes(session, recipients){
+  if(!JWT) return Promise.reject(new Error("Missing JWT (?token=)"));
+  var url = API_BASE + "/plugins/telemetry/DEVICE/" + DEVICE_ID + "/SERVER_SCOPE";
+
+  var body = {
+    Training_Title:         session.Training_Title || "",
+    Training_Operator_Name: session.Training_Operator_Name || "",
+    Training_Start:         session.Training_Start,
+    Training_End:           session.Training_End,
+    Trainer_Name:           session.Trainer_Name || "",
+    Training_Topic:         session.Training_Topic || "",
+    Training_Machine:       session.Training_Machine || "",
+    Training_Status:        session.Training_Status || "Planned",
+    [ATTR_SEND_MAIL]:       true,
+    [ATTR_TRAINING_MAILS]:  recipients   // array of emails
+  };
+  return fetch(url, {
+    method: "POST",
+    headers: { "X-Authorization": "Bearer " + JWT, "Content-Type": "application/json" },
+    body: JSON.stringify(body)
+  }).then(res => res.ok ? null : res.text().then(t => { throw new Error("Mail attribute write failed: "+t); }));
+}
+
 /************ DETAILS + ACTION BUTTONS ************/
 function showDetails(ev){
   state.selectedEvent = ev;
@@ -349,14 +391,18 @@ function showDetails(ev){
   $("#sideActions").style.display = "flex";
 }
 
-/************ MODAL + ACTIONS ************/
+/************ MODALS + ACTIONS ************/
 var overlay = $("#overlay");
+var mailOverlay = $("#mailOverlay");
 function busy(on){
   $("#saveSession").disabled = !!on;
   $("#btnCancel").disabled   = !!on;
   $("#btnEdit").disabled     = !!on;
+  $("#btnMail").disabled     = !!on;
+  $("#sendMailBtn").disabled = !!on;
 }
 $("#closeModal").addEventListener("click", function(){ overlay.style.display = "none"; });
+$("#closeMailModal").addEventListener("click", function(){ mailOverlay.style.display = "none"; });
 
 $("#saveSession").addEventListener("click", function(){
   if (state.mode === "update") onUpdateSession();
@@ -406,7 +452,6 @@ $("#btnCancel").addEventListener("click", function(){
   loading("Cancelling…"); busy(true);
   writeAttributes(payload, { mode: "cancel" })
     .then(function(){
-      // Auto refresh every 5s until the updated row shows Cancelled
       startAutoRefresh(payload.Update_Timestamp, function(found){
         return String(found.extendedProps.Training_Status).toLowerCase() === "cancelled";
       });
@@ -415,6 +460,61 @@ $("#btnCancel").addEventListener("click", function(){
     .finally(()=>{ busy(false); });
 });
 
+/* Send Mail button → open modal with details */
+$("#btnMail").addEventListener("click", function(){
+  if (!state.selectedEvent) { alert("Select a session first."); return; }
+  var p = state.selectedEvent.extendedProps;
+  var fmt = v => v ? new Date(Number(v)).toLocaleString() : "-";
+  var html =
+    '<div><strong>Title:</strong> '   + escapeHtml(p.Training_Title||"-") + '</div>'+
+    '<div><strong>Operator:</strong> '+ escapeHtml(p.Training_Operator_Name||"-") + '</div>'+
+    '<div><strong>Trainer:</strong> ' + escapeHtml(p.Trainer_Name||"-") + '</div>'+
+    '<div><strong>Topic:</strong> '   + escapeHtml(p.Training_Topic||"-") + '</div>'+
+    '<div><strong>Machine:</strong> ' + escapeHtml(p.Training_Machine||"-") + '</div>'+
+    '<div><strong>Status:</strong> '  + escapeHtml(p.Training_Status||"Planned") + '</div>'+
+    '<div><strong>Start:</strong> '   + fmt(p.Training_Start) + '</div>'+
+    '<div><strong>End:</strong> '     + fmt(p.Training_End) + '</div>';
+  $("#mailDetailsBox").innerHTML = html;
+  $("#mailInput").value = "";
+  mailOverlay.style.display = "flex";
+});
+
+/* Send Mail → write attributes with Send_Mail=true & Training_mails */
+$("#sendMailBtn").addEventListener("click", function(){
+  if (!state.selectedEvent) { alert("Select a session first."); return; }
+  var raw = $("#mailInput").value.trim();
+  if (!raw) { alert("Please enter at least one email ID."); return; }
+  // parse comma/space/newline separated emails → array
+  var recipients = raw.split(/[, \n\r\t;]+/).map(s=>s.trim()).filter(Boolean);
+  if (!recipients.length){ alert("No valid email IDs parsed."); return; }
+
+  var p = state.selectedEvent.extendedProps;
+  var payload = {
+    Training_Title: p.Training_Title || "",
+    Training_Operator_Name: p.Training_Operator_Name || "",
+    Training_Start: p.Training_Start,
+    Training_End:   p.Training_End,
+    Trainer_Name: p.Trainer_Name || "",
+    Training_Topic: p.Training_Topic || "",
+    Training_Machine: p.Training_Machine || "",
+    Training_Status: p.Training_Status || "Planned"
+  };
+
+  busy(true); loading("Preparing email…");
+  writeMailAttributes(payload, recipients)
+    .then(function(){
+      loading("Email request sent ✓");
+      mailOverlay.style.display = "none";
+      // Optional: no telemetry polling here (attribute-based trigger)
+    })
+    .catch(function(err){
+      console.error(err);
+      alert(err.message || "Failed to send mail request");
+    })
+    .finally(function(){ busy(false); });
+});
+
+/************ CREATE / UPDATE ************/
 function openModalForDate(jsDate){
   state.mode = "create";
   state.clickedDate = new Date(jsDate.getFullYear(), jsDate.getMonth(), jsDate.getDate());
@@ -437,7 +537,6 @@ function onCreateSession(){
   writeAttributes(payload, { mode:"create" })
     .then(function(){
       overlay.style.display="none";
-      // rule-chain writes telemetry at ts = Training_Start → auto-refresh until appears
       startAutoRefresh(payload.Training_Start);
     })
     .catch(function(e){ console.error(e); alert(e.message||"Failed to save"); })
@@ -462,10 +561,8 @@ function onUpdateSession(){
   writeAttributes(payload, { mode:"update" })
     .then(function(){
       overlay.style.display="none";
-      // Auto refresh until the base row reflects the new status/title/time
       startAutoRefresh(payload.Update_Timestamp, function(found){
         var p = found.extendedProps || {};
-        // relaxed match to avoid type mismatch issues
         var titleOk = String(p.Training_Title||"") === String(payload.Training_Title||"");
         var statusOk = String(p.Training_Status||"") === String(payload.Training_Status||"");
         var startOk = Number(p.Training_Start||0) === Number(payload.Training_Start||0);
