@@ -239,13 +239,14 @@ function colorByStatus(s){
 function eventContent(arg){
   var p = arg.event.extendedProps;
   var time = arg.timeText || "";
-  var machine = p.Training_Machine ? (" • " + escapeHtml(p.Training_Machine)) : "";
-  var trainer = p.Trainer_Name ? (" – " + escapeHtml(p.Trainer_Name)) : "";
+ // var machine = p.Training_Machine ? (" • " + escapeHtml(p.Training_Machine)) : "";
+//  var trainer = p.Trainer_Name ? (" – " + escapeHtml(p.Trainer_Name)) : "";
   var title = arg.event.title || "Training";
   return { html:
-    '<span class="sub">'+time+machine+'</span>'+
-    '<span>'+escapeHtml(title)+trainer+'</span>'+
-    '<span class="tiny">'+escapeHtml(p.Training_Operator_Name || "")+'</span>'
+    '<span class="sub">'+time+'</span>'+
+    '<span>'+escapeHtml(title)+'</span>'+'</span>'
+ //   '<span class="tiny">'+escapeHtml(p.Training_Operator_Name || "")+
+
   };
 }
 function isValidEmail(s){ return /^[^\s@]+@[^\s@]+\.[^\s@]+$/i.test(s || ""); }
