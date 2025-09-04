@@ -59,7 +59,7 @@
 <div class="app">
   <header>
     <div class="brand">PlantWiz • Training Calendar</div>
-    <span class="muted">Create → <code>Save_Button=false</code>. Update/Cancel → <code>Update_Buttton=true</code> + <code>Update_Timestamp=base ts</code>.</span>
+    <span class="muted">Create → <code>Save_Button=false</code>. Update/Cancel → <code>Update_Buttton=true</code> + <code>Update_Timestamp=base ts</code>. Auto-refresh after actions.</span>
     <div class="spacer"></div>
     <span id="loading"></span>
   </header>
@@ -155,10 +155,12 @@ var KEYS = [
 ];
 
 /************ HELPERS ************/
+// DOM & state
 function $(s){ return document.querySelector(s); }
 function loading(t){ $("#loading").textContent = t || ""; }
 var state = { calendar:null, clickedDate:null, lastRange:null, selectedEvent:null, mode:"create" };
 
+// time utils
 function mergeDateTime(baseDate, hhmm){
   var parts = String(hhmm||"00:00").split(":");
   var h = parseInt(parts[0]||"0",10), m = parseInt(parts[1]||"0",10);
@@ -176,7 +178,7 @@ function colorByStatus(s){
   var v = String(s||"Planned").toLowerCase();
   if (v==="cancelled") return "status-cancelled";
   if (v==="compleated") return "status-compleated";
-  return "status-planned"; // Planned default
+  return "status-planned";
 }
 function eventContent(arg){
   var p = arg.event.extendedProps;
@@ -195,10 +197,10 @@ function eventContent(arg){
 function readRangeSessions(rangeStart, rangeEnd){
   if(!JWT){ return Promise.reject(new Error("Missing JWT (?token=)")); }
   var url = API_BASE + "/plugins/telemetry/DEVICE/" + DEVICE_ID + "/values/timeseries"
-          + "?keys=" + encodeURIComponent(KEYS.join(","))
-          + "&startTs=" + rangeStart.getTime()
-          + "&endTs="   + rangeEnd.getTime()
-          + "&limit=5000";
+          + "?keys=" + encodeURIComponent(KEYS.join(",")) +
+            "&startTs=" + rangeStart.getTime() +
+            "&endTs="   + rangeEnd.getTime() +
+            "&limit=5000";
   return fetch(url, { headers: { "X-Authorization": "Bearer " + JWT } })
     .then(res => res.ok ? res.json() : res.text().then(t => { throw new Error("Timeseries read failed: "+t); }))
     .then(tsObj => {
@@ -210,7 +212,6 @@ function readRangeSessions(rangeStart, rangeEnd){
           rec[k] = p.value;
         });
       });
-
       var out = [];
       Object.keys(map).forEach(tsStr => {
         var r = map[tsStr];
@@ -242,38 +243,57 @@ function readRangeSessions(rangeStart, rangeEnd){
     });
 }
 
-/************ SMART POLLING ************/
-function waitForTelemetry(expectedTs, predicate, maxWait){
-  return new Promise((resolve, reject)=>{
-    var start = Date.now();
-    var timeout = maxWait || 8000;   // overall max wait
-    var interval = 700;              // poll cadence
+/************ AUTO-REFRESH LOOP (every 5s, up to 3 min) ************/
+var _autoTimer = null, _autoDeadline = 0;
+function stopAutoRefresh(){
+  if (_autoTimer) { clearInterval(_autoTimer); _autoTimer = null; }
+}
+function startAutoRefresh(expectedTs, predicate){
+  stopAutoRefresh();
+  // give rule-chain up to 3 minutes to mirror / update
+  _autoDeadline = Date.now() + 3*60*1000;
+  _autoTimer = setInterval(function(){
+    if (Date.now() > _autoDeadline) {
+      stopAutoRefresh();
+      loading("Stopped: timeout waiting for telemetry update");
+      return;
+    }
+    if (!state.lastRange) return;
+    readRangeSessions(state.lastRange.start, state.lastRange.end)
+      .then(function(events){
+        // Repaint calendar on every tick so user sees new items ASAP
+        state.calendar.removeAllEvents();
+        state.calendar.addEventSource(events);
+        $("#details").className="empty"; $("#details").textContent="Select a session on the calendar";
+        $("#sideActions").style.display="none";
+        loading("Auto-refreshing…");
 
-    function tick(){
-      if (!state.lastRange){ return reject(new Error("No calendar range to poll")); }
-      readRangeSessions(state.lastRange.start, state.lastRange.end)
-        .then(function(events){
-          // find session with the expected base timestamp
+        // If we know which row we expect, check it
+        if (expectedTs != null){
           var found = events.find(ev => String(ev.extendedProps.__ts) === String(expectedTs));
           if (found){
-            if (typeof predicate === "function"){
-              try{
-                if (predicate(found)) return resolve(events);
-              }catch(e){ /* ignore predicate errors, keep polling */ }
-            }else{
-              return resolve(events);
+            if (typeof predicate === "function") {
+              try {
+                if (predicate(found)) {
+                  stopAutoRefresh();
+                  loading("Update detected ✓");
+                }
+              } catch(e) { /* ignore */ }
+            } else {
+              stopAutoRefresh();
+              loading("Update detected ✓");
             }
           }
-          if (Date.now() - start > timeout) return reject(new Error("Timeout waiting for telemetry update"));
-          setTimeout(tick, interval);
-        })
-        .catch(function(e){
-          if (Date.now() - start > timeout) return reject(e);
-          setTimeout(tick, interval);
-        });
-    }
-    tick();
-  });
+        } else {
+          // if no expectedTs provided, a single tick is enough
+          stopAutoRefresh();
+        }
+      })
+      .catch(function(err){
+        console.error(err);
+        loading("Auto-refresh error: "+(err.message||err));
+      });
+  }, 5000); // every 5 seconds
 }
 
 /************ WRITE (attributes) ************/
@@ -311,12 +331,12 @@ function showDetails(ev){
   state.selectedEvent = ev;
   var p = ev.extendedProps;
   function fmt(v){ return v ? new Date(Number(v)).toLocaleString() : "-"; }
-  var badgeCls = "badge b-" + colorByStatus(p.Training_Status).replace("status-","");
+  var badgeCls = colorByStatus(p.Training_Status);
   $("#details").className = "";
   $("#details").innerHTML =
     '<div class="kpi">'+
       '<span>Base ts</span><span>'+escapeHtml(String(p.__ts||"-"))+'</span>'+
-      '<span>Status</span><span><span class="'+badgeCls+'">'+escapeHtml(p.Training_Status||"Planned")+'</span></span>'+
+      '<span>Status</span><span><span class="'+badgeCls+'" style="padding:2px 8px;border-radius:999px;color:#fff;">'+escapeHtml(p.Training_Status||"Planned")+'</span></span>'+
       '<span>Title</span><span>'+escapeHtml(p.Training_Title||"-")+'</span>'+
       '<span>Topic</span><span>'+escapeHtml(p.Training_Topic||"-")+'</span>'+
       '<span>Operator</span><span>'+escapeHtml(p.Training_Operator_Name||"-")+'</span>'+
@@ -386,14 +406,13 @@ $("#btnCancel").addEventListener("click", function(){
   loading("Cancelling…"); busy(true);
   writeAttributes(payload, { mode: "cancel" })
     .then(function(){
-      // poll for the updated row at Update_Timestamp and status=Cancelled
-      return waitForTelemetry(payload.Update_Timestamp, function(found){
-        return (found.extendedProps.Training_Status === "Cancelled");
-      }, 10000);
+      // Auto refresh every 5s until the updated row shows Cancelled
+      startAutoRefresh(payload.Update_Timestamp, function(found){
+        return String(found.extendedProps.Training_Status).toLowerCase() === "cancelled";
+      });
     })
-    .then(renderEventsAndReset)
     .catch(err => { console.error(err); alert(err.message||"Failed to cancel"); })
-    .finally(()=>{ busy(false); loading(""); });
+    .finally(()=>{ busy(false); });
 });
 
 function openModalForDate(jsDate){
@@ -417,15 +436,12 @@ function onCreateSession(){
   loading("Saving…"); busy(true);
   writeAttributes(payload, { mode:"create" })
     .then(function(){
-      // The rule-chain writes telemetry at ts = Training_Start
-      return waitForTelemetry(payload.Training_Start, null, 10000);
-    })
-    .then(function(events){
       overlay.style.display="none";
-      renderEventsAndReset(events);
+      // rule-chain writes telemetry at ts = Training_Start → auto-refresh until appears
+      startAutoRefresh(payload.Training_Start);
     })
     .catch(function(e){ console.error(e); alert(e.message||"Failed to save"); })
-    .finally(function(){ busy(false); loading(""); });
+    .finally(function(){ busy(false); });
 }
 
 function onUpdateSession(){
@@ -445,37 +461,20 @@ function onUpdateSession(){
   loading("Updating…"); busy(true);
   writeAttributes(payload, { mode:"update" })
     .then(function(){
-      // poll for the updated row at Update_Timestamp and (optionally) ensure a field changed:
-      return waitForTelemetry(payload.Update_Timestamp, function(found){
-        // Example predicate: title OR status matches the just-sent values
-        var p = found.extendedProps;
-        return (p.Training_Title === payload.Training_Title) &&
-               (p.Training_Status === payload.Training_Status) &&
-               (p.Training_Start === payload.Training_Start) &&
-               (p.Training_End   === payload.Training_End);
-      }, 10000);
-    })
-    .then(function(events){
       overlay.style.display="none";
-      renderEventsAndReset(events);
+      // Auto refresh until the base row reflects the new status/title/time
+      startAutoRefresh(payload.Update_Timestamp, function(found){
+        var p = found.extendedProps || {};
+        // relaxed match to avoid type mismatch issues
+        var titleOk = String(p.Training_Title||"") === String(payload.Training_Title||"");
+        var statusOk = String(p.Training_Status||"") === String(payload.Training_Status||"");
+        var startOk = Number(p.Training_Start||0) === Number(payload.Training_Start||0);
+        var endOk   = Number(p.Training_End||0)   === Number(payload.Training_End||0);
+        return titleOk && statusOk && startOk && endOk;
+      });
     })
     .catch(function(e){ console.error(e); alert(e.message||"Failed to update"); })
-    .finally(function(){ busy(false); loading(""); });
-}
-
-function renderEventsAndReset(events){
-  if (!events){
-    // safety: if no events passed from poll, refetch once
-    if (state.lastRange){
-      return readRangeSessions(state.lastRange.start, state.lastRange.end).then(renderEventsAndReset);
-    }
-    return;
-  }
-  state.calendar.removeAllEvents();
-  state.calendar.addEventSource(events);
-  $("#details").className="empty"; $("#details").textContent="Select a session on the calendar";
-  $("#sideActions").style.display="none";
-  loading("Loaded "+events.length+" session(s)");
+    .finally(function(){ busy(false); });
 }
 
 function collectFormPayload(base){
