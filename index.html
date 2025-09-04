@@ -55,8 +55,13 @@
   .modal label{display:block;font-size:12px;color:#475569;font-weight:800;margin:0 0 6px}
   .modal footer{display:flex;gap:10px;justify-content:flex-end;border-top:1px solid var(--ring);padding:10px 14px;border-radius:0 0 14px 14px}
 
-  /* Mail modal tweaks */
+  /* Mail modal */
   .mail-details{border:1px dashed var(--ring);border-radius:10px;padding:10px;font-size:13px}
+  .chips{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}
+  .chip{display:inline-flex;align-items:center;gap:6px;padding:4px 8px;border:1px solid var(--ring);border-radius:999px;font-size:12px;background:#f8fafc}
+  .chip button{border:0;background:transparent;cursor:pointer;font-weight:900;line-height:1}
+  .email-row{display:flex;gap:8px;align-items:center}
+  .email-row .input{flex:1}
   .chips-hint{font-size:12px;color:#64748b}
 </style>
 </head>
@@ -150,14 +155,17 @@
     </header>
     <div class="body">
       <div class="row-full">
-        <div class="mail-details" id="mailDetailsBox">
-          <!-- training summary will be injected here -->
-        </div>
+        <div class="mail-details" id="mailDetailsBox"></div>
       </div>
+
       <div class="row-full">
         <label>Recipient emails</label>
-        <textarea id="mailInput" rows="3" class="input" placeholder="Add one or more email IDs, separated by comma or space"></textarea>
-        <div class="chips-hint">Example: ops@plant.com, trainer@plant.com</div>
+        <div class="email-row">
+          <input id="mailOne" class="input" type="email" placeholder="name@company.com">
+          <button class="btn ghost" id="addMailBtn" type="button">+</button>
+        </div>
+        <div id="mailChips" class="chips"></div>
+        <div class="chips-hint">Add one email at a time using “+”. Example: ops@plant.com, trainer@plant.com</div>
       </div>
     </div>
     <footer>
@@ -189,7 +197,10 @@ var KEYS = [
 /************ HELPERS ************/
 function $(s){ return document.querySelector(s); }
 function loading(t){ $("#loading").textContent = t || ""; }
-var state = { calendar:null, clickedDate:null, lastRange:null, selectedEvent:null, mode:"create" };
+var state = {
+  calendar:null, clickedDate:null, lastRange:null, selectedEvent:null, mode:"create",
+  mailList: []   // holds recipient emails for chips UI
+};
 
 function mergeDateTime(baseDate, hhmm){
   var parts = String(hhmm||"00:00").split(":");
@@ -221,6 +232,10 @@ function eventContent(arg){
     '<span>'+escapeHtml(title)+trainer+'</span>'+
     '<span class="tiny">'+escapeHtml(p.Training_Operator_Name || "")+'</span>'
   };
+}
+function isValidEmail(s){
+  // Simple but effective email check
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/i.test(s || "");
 }
 
 /************ READ (telemetry) ************/
@@ -331,7 +346,7 @@ function writeAttributes(session, opts){
   };
 
   if (opts && opts.mode === "create") {
-    body[ATTR_SAVE_FLAG] = false; // signal for your rule-chain
+    body[ATTR_SAVE_FLAG] = false;
   } else if (opts && (opts.mode === "update" || opts.mode === "cancel")) {
     body[ATTR_UPDATE_FLAG] = true;
     if (session.Update_Timestamp) body.Update_Timestamp = session.Update_Timestamp;
@@ -359,7 +374,7 @@ function writeMailAttributes(session, recipients){
     Training_Machine:       session.Training_Machine || "",
     Training_Status:        session.Training_Status || "Planned",
     [ATTR_SEND_MAIL]:       true,
-    [ATTR_TRAINING_MAILS]:  recipients   // array of emails
+    [ATTR_TRAINING_MAILS]:  recipients
   };
   return fetch(url, {
     method: "POST",
@@ -400,6 +415,7 @@ function busy(on){
   $("#btnEdit").disabled     = !!on;
   $("#btnMail").disabled     = !!on;
   $("#sendMailBtn").disabled = !!on;
+  $("#addMailBtn").disabled  = !!on && $("#addMailBtn"); // guard
 }
 $("#closeModal").addEventListener("click", function(){ overlay.style.display = "none"; });
 $("#closeMailModal").addEventListener("click", function(){ mailOverlay.style.display = "none"; });
@@ -460,7 +476,40 @@ $("#btnCancel").addEventListener("click", function(){
     .finally(()=>{ busy(false); });
 });
 
-/* Send Mail button → open modal with details */
+/* --------- Send Mail flow (chips UI) ---------- */
+
+function refreshMailChips(){
+  var box = $("#mailChips");
+  box.innerHTML = "";
+  state.mailList.forEach(function(email, idx){
+    var chip = document.createElement("span");
+    chip.className = "chip";
+    chip.innerHTML = '<span>'+escapeHtml(email)+'</span><button type="button" aria-label="Remove">✕</button>';
+    chip.querySelector("button").addEventListener("click", function(){
+      state.mailList.splice(idx, 1);
+      refreshMailChips();
+    });
+    box.appendChild(chip);
+  });
+}
+
+function addOneEmailFromInput(){
+  var val = ($("#mailOne").value || "").trim();
+  if (!val) return;
+  var email = val.toLowerCase();
+  if (!isValidEmail(email)) { alert("Invalid email: "+val); return; }
+  if (state.mailList.includes(email)) { alert("Already added: "+email); return; }
+  state.mailList.push(email);
+  $("#mailOne").value = "";
+  refreshMailChips();
+}
+
+$("#addMailBtn").addEventListener("click", addOneEmailFromInput);
+$("#mailOne").addEventListener("keydown", function(e){
+  if (e.key === "Enter"){ e.preventDefault(); addOneEmailFromInput(); }
+});
+
+/* Open mail modal */
 $("#btnMail").addEventListener("click", function(){
   if (!state.selectedEvent) { alert("Select a session first."); return; }
   var p = state.selectedEvent.extendedProps;
@@ -475,18 +524,26 @@ $("#btnMail").addEventListener("click", function(){
     '<div><strong>Start:</strong> '   + fmt(p.Training_Start) + '</div>'+
     '<div><strong>End:</strong> '     + fmt(p.Training_End) + '</div>';
   $("#mailDetailsBox").innerHTML = html;
-  $("#mailInput").value = "";
+
+  state.mailList = [];   // reset chips
+  refreshMailChips();
+  $("#mailOne").value = "";
   mailOverlay.style.display = "flex";
 });
 
 /* Send Mail → write attributes with Send_Mail=true & Training_mails */
 $("#sendMailBtn").addEventListener("click", function(){
   if (!state.selectedEvent) { alert("Select a session first."); return; }
-  var raw = $("#mailInput").value.trim();
-  if (!raw) { alert("Please enter at least one email ID."); return; }
-  // parse comma/space/newline separated emails → array
-  var recipients = raw.split(/[, \n\r\t;]+/).map(s=>s.trim()).filter(Boolean);
-  if (!recipients.length){ alert("No valid email IDs parsed."); return; }
+  if (state.mailList.length === 0){
+    // try adding what's typed if any
+    if (($("#mailOne").value||"").trim()){
+      addOneEmailFromInput();
+    }
+  }
+  if (state.mailList.length === 0){
+    alert("Please add at least one email using the + button.");
+    return;
+  }
 
   var p = state.selectedEvent.extendedProps;
   var payload = {
@@ -501,11 +558,10 @@ $("#sendMailBtn").addEventListener("click", function(){
   };
 
   busy(true); loading("Preparing email…");
-  writeMailAttributes(payload, recipients)
+  writeMailAttributes(payload, state.mailList.slice())
     .then(function(){
       loading("Email request sent ✓");
       mailOverlay.style.display = "none";
-      // Optional: no telemetry polling here (attribute-based trigger)
     })
     .catch(function(err){
       console.error(err);
