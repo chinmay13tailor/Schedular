@@ -249,8 +249,8 @@ function eventContent(arg){
   hours = hours ? hours : 12; // 0 => 12
   var time = 
     String(hours).padStart(2,'0') + ":" +
-    String(minutes).padStart(2,'0') + ":" +
-    String(seconds).padStart(2,'0') + " " + ampm;
+    String(minutes).padStart(2,'0') + "  " +ampm;
+    
 
   var topic = p.Training_Topic || "Training";
 
