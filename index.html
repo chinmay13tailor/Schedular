@@ -238,17 +238,28 @@ function colorByStatus(s){
 }
 function eventContent(arg){
   var p = arg.event.extendedProps;
-  var time = arg.timeText || "";
- // var machine = p.Training_Machine ? (" • " + escapeHtml(p.Training_Machine)) : "";
-//  var trainer = p.Trainer_Name ? (" – " + escapeHtml(p.Trainer_Name)) : "";
-  var title = arg.event.title || "Training";
-  return { html:
-    '<span class="sub">'+time+'</span>'+
-    '<span>'+escapeHtml(title)+'</span>'+'</span>'
- //   '<span class="tiny">'+escapeHtml(p.Training_Operator_Name || "")+
+  
+  // Format Training_Start into full time like "09:00:00 AM"
+  var d = new Date(p.Training_Start);
+  var hours   = d.getHours();
+  var minutes = d.getMinutes();
+  var seconds = d.getSeconds();
+  var ampm    = hours >= 12 ? "PM" : "AM";
+  hours = hours % 12; 
+  hours = hours ? hours : 12; // 0 => 12
+  var time = 
+    String(hours).padStart(2,'0') + ":" +
+    String(minutes).padStart(2,'0') + ":" +
+    String(seconds).padStart(2,'0') + " " + ampm;
 
+  var topic = p.Training_Topic || "Training";
+
+  return { html:
+    '<span class="sub">'+time+'</span>' +
+    '<span>'+escapeHtml(topic)+'</span>'
   };
 }
+
 function isValidEmail(s){ return /^[^\s@]+@[^\s@]+\.[^\s@]+$/i.test(s || ""); }
 
 /************ READ ************/
