@@ -732,23 +732,22 @@ function startCalendar(){
   });
   state.calendar.render();
 
-  // inject legends once calendar is rendered
-const toolbarCenter = calEl.querySelector(".fc-toolbar-chunk:nth-child(2)");
-if (toolbarCenter) {
+  // inject legends at bottom-right of header
+const toolbar = calEl.querySelector(".fc-toolbar");
+if (toolbar) {
+  // ensure parent is relative for absolute positioning
+  toolbar.style.position = "relative";
+
   const legends = document.createElement("div");
-  legends.className = "fc-toolbar-chunk legends";
+  legends.className = "calendar-legends";
   legends.innerHTML = `
     <span><span class="legend-box status-planned"></span> Planned</span>
     <span><span class="legend-box status-compleated"></span> Completed</span>
     <span><span class="legend-box status-cancelled"></span> Cancelled</span>
   `;
-  toolbarCenter.appendChild(legends);
+  toolbar.appendChild(legends);
 }
-  /// for legends
-  loading("");
-}
-if (document.readyState === "complete" || document.readyState === "interactive") setTimeout(startCalendar,0);
-else document.addEventListener("DOMContentLoaded", startCalendar);
+
 </script>
 </body>
 </html>
