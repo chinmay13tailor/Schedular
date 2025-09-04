@@ -68,30 +68,6 @@
   .email-row .input{flex:1}
   .chips-hint{font-size:12px;color:#64748b}
 
- .calendar-legends {
-  display: flex;
-  gap: 16px;
-  align-items: center;
-  position: absolute;
-  bottom: 4px;
-  right: 8px;
-}
-.calendar-legends .legend-box {
-  display: inline-block;
-  width: 12px;
-  height: 12px;
-  border-radius: 3px;
-  margin-right: 4px;
-}
-.calendar-legends span {
-  font-size: 13px;
-  font-weight: 600;
-  color: #374151;
-}
-.legend-box.status-planned { background: var(--blue); }
-.legend-box.status-compleated { background: var(--cyan); }
-.legend-box.status-cancelled { background: var(--red); }
-
 </style>
 </head>
 <body>
@@ -731,22 +707,6 @@ function startCalendar(){
     }
   });
   state.calendar.render();
-
-  // inject legends at bottom-right of header
-const toolbar = calEl.querySelector(".fc-toolbar");
-if (toolbar) {
-  // ensure parent is relative for absolute positioning
-  toolbar.style.position = "relative";
-
-  const legends = document.createElement("div");
-  legends.className = "calendar-legends";
-  legends.innerHTML = `
-    <span><span class="legend-box status-planned"></span> Planned</span>
-    <span><span class="legend-box status-compleated"></span> Completed</span>
-    <span><span class="legend-box status-cancelled"></span> Cancelled</span>
-  `;
-  toolbar.appendChild(legends);
-}
 
 </script>
 </body>
