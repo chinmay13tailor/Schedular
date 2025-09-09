@@ -12,6 +12,7 @@
   *{box-sizing:border-box}
   body{margin:0;background:#fff;color:var(--text);font:14px/1.45 system-ui,-apple-system,Segoe UI,Roboto,Arial}
   .app{display:grid;grid-template-columns:1fr 320px;gap:16px;min-height:100vh;padding:16px}
+  /* Top status bar (no heading) */
   header{grid-column:1/-1;display:flex;gap:10px;align-items:center;border:1px solid var(--ring);border-radius:12px;background:#fff;padding:10px 12px}
   .spacer{flex:1}
   .btn,.input,textarea,select{border:1px solid var(--ring);border-radius:10px;background:#fff;padding:8px 10px}
@@ -29,6 +30,7 @@
   .kpi span:first-child{color:#64748b}
   .side-actions{display:flex;gap:8px;margin-top:12px;flex-wrap:wrap}
 
+  /* Filter bar */
   .filters{grid-column:1/-1;display:flex;align-items:center;gap:10px;border:1px solid var(--ring);border-radius:12px;background:#fff;padding:10px 12px}
   .filters label{font-size:12px;color:#64748b;margin-right:4px}
 
@@ -42,38 +44,43 @@
   .status-planned{background:var(--blue)}
   .status-compleated{background:var(--cyan)}
   .status-cancelled{background:var(--red)}
+  .sub{display:block;font-weight:600;opacity:.95}
+  .tiny{display:block;font-weight:600;opacity:.8;font-size:12px}
 
   .muted{color:#64748b}
   #loading{font-size:12px;color:#64748b;margin-left:8px}
 
   /* Modal base */
   .overlay{position:fixed;inset:0;background:rgba(15,23,42,.35);display:none;align-items:center;justify-content:center;z-index:50}
-  .modal{width:min(600px,92vw);background:#fff;border:1px solid var(--ring);border-radius:14px;box-shadow:0 24px 48px rgba(0,0,0,.18)}
+  .modal{width:min(560px,92vw);background:#fff;border:1px solid var(--ring);border-radius:14px;box-shadow:0 24px 48px rgba(0,0,0,.18)}
   .modal header{display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid var(--ring);padding:12px 14px;border-radius:14px 14px 0 0}
   .modal .body{padding:14px;display:grid;grid-template-columns:1fr 1fr;gap:10px}
   .modal .row-full{grid-column:1 / -1}
   .modal label{display:block;font-size:12px;color:#475569;font-weight:800;margin:0 0 6px}
   .modal footer{display:flex;gap:10px;justify-content:flex-end;border-top:1px solid var(--ring);padding:10px 14px;border-radius:0 0 14px 14px}
 
-  /* Chips (operators & mail) */
+  /* Chips */
   .chips{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}
   .chip{display:inline-flex;align-items:center;gap:6px;padding:4px 8px;border:1px solid var(--ring);border-radius:999px;font-size:12px;background:#f8fafc}
   .chip button{border:0;background:transparent;cursor:pointer;font-weight:900;line-height:1}
-  .row-add{display:flex;gap:8px;align-items:center}
-  .row-add .input{flex:1}
-  .chips-hint{font-size:12px;color:#64748b}
+  .row-inline{display:flex;gap:8px;align-items:center}
+  .row-inline .input{flex:1}
 
-  /* Legends */
-  .fc-toolbar-chunk.legends { display:flex; gap:16px; align-items:right; margin-right:20px;}
-  .fc-toolbar-chunk.legends .legend-box { display:inline-block; width:12px; height:12px; border-radius:3px; margin-right:4px;}
-  .fc-toolbar-chunk.legends span { font-size:13px; font-weight:600; color:#374151;}
-  .legend-box.status-planned { background: var(--blue); }
-  .legend-box.status-compleated { background: var(--cyan); }
+  /* Mail modal */
+  .mail-details{border:1px dashed var(--ring);border-radius:10px;padding:10px;font-size:13px}
+
+  /* Legends in toolbar center */
+  .fc-toolbar-chunk.legends { display:flex; gap:16px; align-items:center; margin-left:12px; }
+  .fc-toolbar-chunk.legends .legend-box { display:inline-block; width:12px; height:12px; border-radius:3px; margin-right:4px; }
+  .fc-toolbar-chunk.legends span { font-size:13px; font-weight:600; color:#374151; }
+  .legend-box.status-planned   { background: var(--blue); }
+  .legend-box.status-compleated{ background: var(--cyan); }
   .legend-box.status-cancelled { background: var(--red); }
 </style>
 </head>
 <body>
 <div class="app">
+  <!-- status bar (only the live counter on the right) -->
   <header>
     <div class="spacer"></div>
     <span id="loading"></span>
@@ -120,15 +127,14 @@
         <input id="fTitle" class="input" type="text" placeholder="e.g., Operational Safety">
       </div>
 
-      <!-- Operators (chips) -->
+      <!-- Multiple Operators with + and chips -->
       <div class="row-full">
         <label>Operator(s)</label>
-        <div class="row-add">
-          <input id="opOne" class="input" type="text" placeholder="Add operator name">
-          <button class="btn ghost" id="addOpBtn" type="button">+</button>
+        <div class="row-inline">
+          <input id="opInput" class="input" type="text" placeholder="Add operator name">
+          <button class="btn ghost" id="opAddBtn" type="button">+</button>
         </div>
         <div id="opChips" class="chips"></div>
-        <div class="chips-hint">Add one operator at a time using “+”.</div>
       </div>
 
       <div>
@@ -183,12 +189,12 @@
 
       <div class="row-full">
         <label>Recipient emails</label>
-        <div class="row-add">
+        <div class="row-inline">
           <input id="mailOne" class="input" type="email" placeholder="name@company.com">
           <button class="btn ghost" id="addMailBtn" type="button">+</button>
         </div>
         <div id="mailChips" class="chips"></div>
-        <div class="chips-hint">Add one email at a time using “+”.</div>
+        <div class="muted" style="font-size:12px">Add one email at a time using “+”.</div>
       </div>
     </div>
     <footer>
@@ -205,7 +211,7 @@ var API_BASE  = ORIGIN + "/api";
 var DEVICE_ID = "991cf500-661a-11f0-90f1-775fee303094";
 var JWT       = new URLSearchParams(location.search).get("token")  || "";
 
-// Flags (used by rule-chain)
+// Flags (used by rule-chain, not shown in UI)
 var ATTR_SAVE_FLAG    = "Save_Button";
 var ATTR_UPDATE_FLAG  = "Update_Buttton";
 var ATTR_SEND_MAIL    = "Send_Mail";
@@ -220,10 +226,12 @@ var KEYS = [
 /************ HELPERS ************/
 function $(s){ return document.querySelector(s); }
 function loading(t){ $("#loading").textContent = t || ""; }
+function eqStr(a,b){ return String(a||"").trim() === String(b||"").trim(); }
+
 var state = {
   calendar:null, clickedDate:null, lastRange:null, selectedEvent:null, mode:"create",
   mailList: [],
-  operatorList: [],
+  operatorList: [],            // NEW: holds operators for chips UI
   filters: { op: "__ALL__", tr: "__ALL__", ma: "__ALL__" },
   lastEventsFull: []
 };
@@ -250,15 +258,14 @@ function colorByStatus(s){
 function eventContent(arg){
   var p = arg.event.extendedProps;
   var d = new Date(p.Training_Start);
-  var hours = d.getHours(), minutes = d.getMinutes();
-  var ampm = hours >= 12 ? "PM" : "AM";
-  hours = hours % 12; hours = hours ? hours : 12;
-  var time = String(hours).padStart(2,'0') + ":" + String(minutes).padStart(2,'0') + "  " + ampm;
+  var h = d.getHours(), m = d.getMinutes(), s = d.getSeconds();
+  var ampm = h >= 12 ? "PM" : "AM";
+  h = h % 12; h = h ? h : 12;
+  var time = String(h).padStart(2,'0') + ":" + String(m).padStart(2,'0') + ":" + String(s).padStart(2,'0') + " " + ampm;
   var topic = p.Training_Topic || "Training";
-  return { html: '<span>'+time+'    –    '+escapeHtml(topic)+'</span>' };
+  return { html: '<span>'+escapeHtml(time)+' &nbsp;–&nbsp; '+escapeHtml(topic)+'</span>' };
 }
 function isValidEmail(s){ return /^[^\s@]+@[^\s@]+\.[^\s@]+$/i.test(s || ""); }
-function normName(s){ return String(s||"").trim().replace(/\s+/g,' '); }
 
 /************ READ ************/
 function readRangeSessions(rangeStart, rangeEnd){
@@ -310,17 +317,21 @@ function readRangeSessions(rangeStart, rangeEnd){
     });
 }
 
-/************ FILTERS (operator supports multi) ************/
+/************ FILTERS (support multi-operator) ************/
+function splitOps(val){
+  // split stored "A, B, C" into ["A","B","C"]
+  return String(val||"")
+    .split(",")
+    .map(s=>s.trim())
+    .filter(Boolean);
+}
 function populateFiltersFrom(events){
   var ops = new Set(), trs = new Set(), mas = new Set();
   events.forEach(ev=>{
     var p = ev.extendedProps||{};
-    String(p.Training_Operator_Name||"").split(",").forEach(x=>{
-      var n = normName(x);
-      if (n) ops.add(n);
-    });
-    if (p.Trainer_Name)     trs.add(normName(p.Trainer_Name));
-    if (p.Training_Machine) mas.add(normName(p.Training_Machine));
+    splitOps(p.Training_Operator_Name).forEach(o => ops.add(o));
+    if (p.Trainer_Name)          trs.add(String(p.Trainer_Name));
+    if (p.Training_Machine)      mas.add(String(p.Training_Machine));
   });
   function fillSelect(sel, set){
     var el = $(sel);
@@ -336,10 +347,10 @@ function applyFiltersTo(events){
   state.filters = { op: op, tr: tr, ma: ma };
   return events.filter(ev=>{
     var p = ev.extendedProps||{};
-    var opList = String(p.Training_Operator_Name||"").split(",").map(normName).filter(Boolean);
-    var okOp = (op==="__ALL__" || opList.includes(normName(op)));
-    var okTr = (tr==="__ALL__" || normName(p.Trainer_Name)===normName(tr));
-    var okMa = (ma==="__ALL__" || normName(p.Training_Machine)===normName(ma));
+    var opList = splitOps(p.Training_Operator_Name);
+    var okOp = (op==="__ALL__" || opList.includes(op));
+    var okTr = (tr==="__ALL__" || String(p.Trainer_Name)===tr);
+    var okMa = (ma==="__ALL__" || String(p.Training_Machine)===ma);
     return okOp && okTr && okMa;
   });
 }
@@ -359,20 +370,21 @@ $("#btnResetFilters").addEventListener("click", function(){
 });
 
 /************ AUTO-REFRESH (every 5s, 3 min max) ************/
-/* NEW: Supports three modes
-   1) expectedTs && no predicate  => stop when any row with __ts === expectedTs appears
-   2) expectedTs && predicate     => find row at expectedTs; pass that EVENT into predicate(foundEvent)
-   3) no expectedTs && predicate  => pass ALL events into predicate(allEvents)
-*/
 var _autoTimer = null, _autoDeadline = 0;
 function stopAutoRefresh(){ if (_autoTimer) { clearInterval(_autoTimer); _autoTimer = null; } }
+
+/**
+ * startAutoRefresh
+ * - If expectedTs is a number/string → we consider a match when we find an event with that base __ts
+ *   and (if predicate) predicate(foundEvent) returns true.
+ * - If expectedTs is null and predicate is provided → we call predicate(allEvents) each tick and stop when true.
+ */
 function startAutoRefresh(expectedTs, predicate){
   stopAutoRefresh();
   _autoDeadline = Date.now() + 3*60*1000;
   _autoTimer = setInterval(function(){
     if (Date.now() > _autoDeadline) { stopAutoRefresh(); loading("Stopped: timeout waiting for telemetry update"); return; }
     if (!state.lastRange) return;
-
     readRangeSessions(state.lastRange.start, state.lastRange.end)
       .then(function(events){
         state.lastEventsFull = events.slice();
@@ -384,22 +396,20 @@ function startAutoRefresh(expectedTs, predicate){
         $("#sideActions").style.display="none";
         loading("Loaded "+filtered.length+" session(s) — auto-refreshing…");
 
-        let stop = false;
-        if (predicate && expectedTs != null) {
-          // Mode 2: find by timestamp, then validate via predicate(foundEvent)
-          const found = events.find(ev => String(ev.extendedProps.__ts) === String(expectedTs));
-          if (found) {
-            try { stop = !!predicate(found); } catch(e){ stop = false; }
+        if (expectedTs != null){
+          // Mode A: look up by ts
+          var found = events.find(ev => String(ev.extendedProps.__ts) === String(expectedTs));
+          if (found){
+            if (typeof predicate === "function") {
+              try { if (predicate(found)) { stopAutoRefresh(); loading("Update detected ✓"); } }
+              catch(e){}
+            } else { stopAutoRefresh(); loading("Update detected ✓"); }
           }
-        } else if (predicate && expectedTs == null) {
-          // Mode 3: predicate over all events
-          try { stop = !!predicate(events); } catch(e){ stop = false; }
-        } else if (!predicate && expectedTs != null) {
-          // Mode 1: just wait for the row to appear
-          stop = events.some(ev => String(ev.extendedProps.__ts) === String(expectedTs));
+        } else if (typeof predicate === "function"){
+          // Mode B: ask predicate about the whole set (used for Create)
+          try { if (predicate(events)) { stopAutoRefresh(); loading("Update detected ✓"); } }
+          catch(e){}
         }
-
-        if (stop){ stopAutoRefresh(); loading("Update detected ✓"); }
       })
       .catch(function(err){ console.error(err); loading("Auto-refresh error: "+(err.message||err)); });
   }, 5000);
@@ -411,7 +421,7 @@ function writeAttributes(session, opts){
   var url = API_BASE + "/plugins/telemetry/DEVICE/" + DEVICE_ID + "/SERVER_SCOPE";
   var body = {
     Training_Title:         session.Training_Title,
-    Training_Operator_Name: session.Training_Operator_Name, // comma+space list
+    Training_Operator_Name: session.Training_Operator_Name,
     Training_Start:         session.Training_Start,
     Training_End:           session.Training_End,
     Trainer_Name:           session.Trainer_Name,
@@ -459,6 +469,7 @@ function showDetails(ev){
   var p = ev.extendedProps;
   function fmt(v){ return v ? new Date(Number(v)).toLocaleString() : "-"; }
   var badgeCls = colorByStatus(p.Training_Status);
+  var opList = splitOps(p.Training_Operator_Name);
   $("#details").className = "";
   $("#details").innerHTML =
     '<div class="kpi">'+
@@ -466,7 +477,7 @@ function showDetails(ev){
       '<span>Status</span><span><span class="'+badgeCls+'" style="padding:2px 8px;border-radius:999px;color:#fff;">'+escapeHtml(p.Training_Status||"Planned")+'</span></span>'+
       '<span>Title</span><span>'+escapeHtml(p.Training_Title||"-")+'</span>'+
       '<span>Topic</span><span>'+escapeHtml(p.Training_Topic||"-")+'</span>'+
-      '<span>Operator(s)</span><span>'+escapeHtml(p.Training_Operator_Name||"-")+'</span>'+
+      '<span>Operators</span><span>'+escapeHtml(opList.join(", ")||"-")+'</span>'+
       '<span>Trainer</span><span>'+escapeHtml(p.Trainer_Name||"-")+'</span>'+
       '<span>Machine</span><span>'+escapeHtml(p.Training_Machine||"-")+'</span>'+
       '<span>Start</span><span>'+fmt(p.Training_Start)+'</span>'+
@@ -484,38 +495,42 @@ function busy(on){
   $("#btnEdit").disabled     = !!on;
   $("#btnMail").disabled     = !!on;
   $("#sendMailBtn").disabled = !!on;
-  $("#addMailBtn").disabled  = !!on && $("#addMailBtn");
-  $("#addOpBtn").disabled    = !!on && $("#addOpBtn");
+  $("#opAddBtn").disabled    = !!on;
+  $("#addMailBtn").disabled  = !!on;
 }
 $("#closeModal").addEventListener("click", function(){ overlay.style.display = "none"; });
 $("#closeMailModal").addEventListener("click", function(){ mailOverlay.style.display = "none"; });
 
-/* Operator chips */
-function refreshOperatorChips(){
+$("#saveSession").addEventListener("click", function(){
+  if (state.mode === "update") onUpdateSession();
+  else onCreateSession();
+});
+
+/* Operators chips UI */
+function refreshOpChips(){
   var box = $("#opChips"); box.innerHTML = "";
   state.operatorList.forEach(function(name, idx){
     var chip = document.createElement("span");
     chip.className = "chip";
     chip.innerHTML = '<span>'+escapeHtml(name)+'</span><button type="button" aria-label="Remove">✕</button>';
     chip.querySelector("button").addEventListener("click", function(){
-      state.operatorList.splice(idx, 1); refreshOperatorChips();
+      state.operatorList.splice(idx, 1); refreshOpChips();
     });
     box.appendChild(chip);
   });
 }
-function addOneOperatorFromInput(){
-  var val = ($("#opOne").value || "").trim();
-  var name = normName(val);
-  if (!name) return;
-  if (state.operatorList.includes(name)) { alert("Already added: "+name); return; }
-  state.operatorList.push(name);
-  $("#opOne").value = "";
-  refreshOperatorChips();
+function addOneOperator(){
+  var val = ($("#opInput").value || "").trim();
+  if (!val) return;
+  if (state.operatorList.includes(val)) { alert("Already added: "+val); return; }
+  state.operatorList.push(val);
+  $("#opInput").value = "";
+  refreshOpChips();
 }
-$("#addOpBtn").addEventListener("click", addOneOperatorFromInput);
-$("#opOne").addEventListener("keydown", function(e){ if (e.key === "Enter"){ e.preventDefault(); addOneOperatorFromInput(); } });
+$("#opAddBtn").addEventListener("click", addOneOperator);
+$("#opInput").addEventListener("keydown", function(e){ if (e.key==="Enter"){ e.preventDefault(); addOneOperator(); } });
 
-/* Mail chips */
+/* Email chips */
 function refreshMailChips(){
   var box = $("#mailChips"); box.innerHTML = "";
   state.mailList.forEach(function(email, idx){
@@ -538,12 +553,7 @@ function addOneEmailFromInput(){
 $("#addMailBtn").addEventListener("click", addOneEmailFromInput);
 $("#mailOne").addEventListener("keydown", function(e){ if (e.key === "Enter"){ e.preventDefault(); addOneEmailFromInput(); } });
 
-/* Buttons */
-$("#saveSession").addEventListener("click", function(){
-  if (state.mode === "update") onUpdateSession();
-  else onCreateSession();
-});
-
+/* Open Edit */
 $("#btnEdit").addEventListener("click", function(){
   if (!state.selectedEvent) { alert("Select a session first."); return; }
   var p = state.selectedEvent.extendedProps;
@@ -551,16 +561,15 @@ $("#btnEdit").addEventListener("click", function(){
   $("#modalTitle").textContent = "Update training session";
   $("#saveSession").textContent = "Update";
 
-  // Pre-fill operators
-  state.operatorList = String(p.Training_Operator_Name||"")
-    .split(",").map(normName).filter(Boolean);
-  refreshOperatorChips();
-  $("#opOne").value = "";
-
   var base = new Date(p.Training_Start);
   state.clickedDate = new Date(base.getFullYear(), base.getMonth(), base.getDate());
 
   $("#fTitle").value    = p.Training_Title || "";
+  // populate operators from existing comma list
+  state.operatorList = splitOps(p.Training_Operator_Name);
+  refreshOpChips();
+  $("#opInput").value = "";
+
   $("#fTrainer").value  = p.Trainer_Name || "";
   $("#fTopic").value    = p.Training_Topic || "";
   $("#fMachine").value  = p.Training_Machine || "";
@@ -572,6 +581,7 @@ $("#btnEdit").addEventListener("click", function(){
   overlay.style.display = "flex";
 });
 
+/* Cancel */
 $("#btnCancel").addEventListener("click", function(){
   if (!state.selectedEvent) { alert("Select a session first."); return; }
   if (!confirm("Cancel this training?")) return;
@@ -592,22 +602,22 @@ $("#btnCancel").addEventListener("click", function(){
   loading("Cancelling…"); busy(true);
   writeAttributes(payload, { mode: "cancel" })
     .then(function(){
-      // Mode 2: keyed to Update_Timestamp, predicate receives found event
-      startAutoRefresh(payload.Update_Timestamp, function(foundEvent){
-        return String(foundEvent.extendedProps.Training_Status).toLowerCase() === "cancelled";
+      startAutoRefresh(payload.Update_Timestamp, function(found){
+        return String(found.extendedProps.Training_Status).toLowerCase() === "cancelled";
       });
     })
     .catch(err => { console.error(err); alert(err.message||"Failed to cancel"); })
     .finally(()=>{ busy(false); });
 });
 
+/* Open Mail */
 $("#btnMail").addEventListener("click", function(){
   if (!state.selectedEvent) { alert("Select a session first."); return; }
   var p = state.selectedEvent.extendedProps;
   var fmt = v => v ? new Date(Number(v)).toLocaleString() : "-";
   var html =
     '<div><strong>Title:</strong> '   + escapeHtml(p.Training_Title||"-") + '</div>'+
-    '<div><strong>Operator(s):</strong> '+ escapeHtml(p.Training_Operator_Name||"-") + '</div>'+
+    '<div><strong>Operators:</strong> '+ escapeHtml(splitOps(p.Training_Operator_Name).join(", ")||"-") + '</div>'+
     '<div><strong>Trainer:</strong> ' + escapeHtml(p.Trainer_Name||"-") + '</div>'+
     '<div><strong>Topic:</strong> '   + escapeHtml(p.Training_Topic||"-") + '</div>'+
     '<div><strong>Machine:</strong> ' + escapeHtml(p.Training_Machine||"-") + '</div>'+
@@ -618,6 +628,7 @@ $("#btnMail").addEventListener("click", function(){
   state.mailList = []; refreshMailChips(); $("#mailOne").value = ""; mailOverlay.style.display = "flex";
 });
 
+/* Send Mail */
 $("#sendMailBtn").addEventListener("click", function(){
   if (!state.selectedEvent) { alert("Select a session first."); return; }
   if (state.mailList.length === 0){ if (($("#mailOne").value||"").trim()){ addOneEmailFromInput(); } }
@@ -651,18 +662,17 @@ function openModalForDate(jsDate){
   $("#fDateHint").textContent = "Date: " + state.clickedDate.toDateString();
 
   // reset form
-  $("#fTitle").value=""; $("#fTrainer").value="";
-  $("#fTopic").value=""; $("#fMachine").value="";
-  $("#fTimeTo").value="09:00"; $("#fTimeFrom").value="11:00";
-  $("#fStatus").value="Planned";
+  $("#fTitle").value=""; $("#fTrainer").value=""; $("#fTopic").value=""; $("#fMachine").value="";
+  $("#fTimeTo").value="09:00"; $("#fTimeFrom").value="11:00"; $("#fStatus").value="Planned";
 
-  // reset operators
+  // reset operators chips
   state.operatorList = [];
-  refreshOperatorChips();
-  $("#opOne").value = "";
+  refreshOpChips();
+  $("#opInput").value = "";
 
   overlay.style.display = "flex";
 }
+
 function onCreateSession(){
   var base = state.clickedDate || new Date();
   var payload = collectFormPayload(base);
@@ -672,12 +682,31 @@ function onCreateSession(){
   writeAttributes(payload, { mode:"create" })
     .then(function(){
       overlay.style.display="none";
-      // Mode 1: keyed to Training_Start (no predicate)
-      startAutoRefresh(payload.Training_Start, null);
+      // Robust create polling: match by content over the whole event list
+      startAutoRefresh(
+        null,
+        function(allEvents){
+          for (var i=0;i<allEvents.length;i++){
+            var p = allEvents[i].extendedProps || {};
+            if (eqStr(p.Training_Title,         payload.Training_Title) &&
+                eqStr(p.Trainer_Name,           payload.Trainer_Name) &&
+                eqStr(p.Training_Topic,         payload.Training_Topic) &&
+                eqStr(p.Training_Machine,       payload.Training_Machine) &&
+                eqStr(p.Training_Status,        payload.Training_Status) &&
+                eqStr(p.Training_Operator_Name, payload.Training_Operator_Name) &&
+                Number(p.Training_Start||0) === Number(payload.Training_Start||0) &&
+                Number(p.Training_End||0)   === Number(payload.Training_End||0)) {
+              return true;
+            }
+          }
+          return false;
+        }
+      );
     })
     .catch(function(e){ console.error(e); alert(e.message||"Failed to save"); })
     .finally(function(){ busy(false); });
 }
+
 function onUpdateSession(){
   if (!state.selectedEvent || !state.selectedEvent.extendedProps) { alert("No session selected for update."); return; }
   var base = state.clickedDate || new Date();
@@ -686,32 +715,27 @@ function onUpdateSession(){
   if (!baseTs) { alert("Missing base timestamp for update. Please reselect the event."); return; }
   payload.Update_Timestamp = baseTs;
   var must = requiredChecks(payload); if (must) { alert(must); return; }
-
   loading("Updating…"); busy(true);
   writeAttributes(payload, { mode:"update" })
     .then(function(){
       overlay.style.display="none";
-      // Mode 2: keyed to Update_Timestamp; predicate validates the found row fields
-      startAutoRefresh(payload.Update_Timestamp, function(foundEvent){
-        var p = foundEvent.extendedProps || {};
-        return String(p.Training_Title||"")   === String(payload.Training_Title||"")
-            && String(p.Training_Status||"")  === String(payload.Training_Status||"")
-            && Number(p.Training_Start||0)    === Number(payload.Training_Start||0)
-            && Number(p.Training_End||0)      === Number(payload.Training_End||0)
-            && String(p.Training_Operator_Name||"") === String(payload.Training_Operator_Name||"")
-            && String(p.Training_Machine||"") === String(payload.Training_Machine||"")
-            && String(p.Trainer_Name||"")     === String(payload.Trainer_Name||"");
+      startAutoRefresh(payload.Update_Timestamp, function(found){
+        var p = found.extendedProps || {};
+        return eqStr(p.Training_Title,         payload.Training_Title) &&
+               eqStr(p.Training_Status,        payload.Training_Status) &&
+               eqStr(p.Training_Operator_Name, payload.Training_Operator_Name) &&
+               Number(p.Training_Start||0)   === Number(payload.Training_Start||0) &&
+               Number(p.Training_End||0)     === Number(payload.Training_End||0);
       });
     })
     .catch(function(e){ console.error(e); alert(e.message||"Failed to update"); })
     .finally(function(){ busy(false); });
 }
+
 function collectFormPayload(base){
-  // Operators as normalized comma+space string
-  var opStr = state.operatorList.map(normName).filter(Boolean).join(", ");
   return {
     Training_Title: $("#fTitle").value.trim(),
-    Training_Operator_Name: opStr,
+    Training_Operator_Name: state.operatorList.join(", "),
     Training_Start: mergeDateTime(base, $("#fTimeTo").value),
     Training_End:   mergeDateTime(base, $("#fTimeFrom").value),
     Trainer_Name: $("#fTrainer").value.trim(),
@@ -723,7 +747,7 @@ function collectFormPayload(base){
 function requiredChecks(p){
   var must = [
     ["Title", p.Training_Title],
-    ["At least one Operator", p.Training_Operator_Name && p.Training_Operator_Name.length>0],
+    ["Operator(s)", p.Training_Operator_Name],
     ["Trainer Name", p.Trainer_Name],
     ["Training Topic", p.Training_Topic],
     ["Training Machine", p.Training_Machine]
@@ -776,7 +800,7 @@ function startCalendar(){
   });
   state.calendar.render();
 
-  // Legends
+  // inject legends once calendar is rendered
   const toolbarCenter = calEl.querySelector(".fc-toolbar-chunk:nth-child(2)");
   if (toolbarCenter) {
     const legends = document.createElement("div");
