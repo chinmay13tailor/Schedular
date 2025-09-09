@@ -44,8 +44,6 @@
   .status-planned{background:var(--blue)}
   .status-compleated{background:var(--cyan)}
   .status-cancelled{background:var(--red)}
-  .sub{display:block;font-weight:600;opacity:.95}
-  .tiny{display:block;font-weight:600;opacity:.8;font-size:12px}
 
   .muted{color:#64748b}
   #loading{font-size:12px;color:#64748b;margin-left:8px}
@@ -59,36 +57,24 @@
   .modal label{display:block;font-size:12px;color:#475569;font-weight:800;margin:0 0 6px}
   .modal footer{display:flex;gap:10px;justify-content:flex-end;border-top:1px solid var(--ring);padding:10px 14px;border-radius:0 0 14px 14px}
 
-  /* Mail modal */
-  .mail-details{border:1px dashed var(--ring);border-radius:10px;padding:10px;font-size:13px}
+  /* Chips (operators & mail) */
   .chips{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}
   .chip{display:inline-flex;align-items:center;gap:6px;padding:4px 8px;border:1px solid var(--ring);border-radius:999px;font-size:12px;background:#f8fafc}
   .chip button{border:0;background:transparent;cursor:pointer;font-weight:900;line-height:1}
-  .email-row{display:flex;gap:8px;align-items:center}
-  .email-row .input{flex:1}
+  .row-inline{display:flex;gap:8px;align-items:center}
+  .row-inline .input{flex:1}
+
+  /* Mail modal */
+  .mail-details{border:1px dashed var(--ring);border-radius:10px;padding:10px;font-size:13px}
   .chips-hint{font-size:12px;color:#64748b}
 
-  .fc-toolbar-chunk.legends {
-  display: flex;
-  gap: 16px;
-  align-items: right;
-  margin-right: 20px;
-}
-.fc-toolbar-chunk.legends .legend-box {
-  display: inline-block;
-  width: 12px;
-  height: 12px;
-  border-radius: 3px;
-  margin-right: 4px;
-}
-.fc-toolbar-chunk.legends span {
-  font-size: 13px;
-  font-weight: 600;
-  color: #374151; /* slate gray */
-}
-.legend-box.status-planned { background: var(--blue); }
-.legend-box.status-compleated { background: var(--cyan); }
-.legend-box.status-cancelled { background: var(--red); }
+  /* Legends in toolbar */
+  .fc-toolbar-chunk.legends{display:flex;gap:16px;align-items:center;margin-left:14px}
+  .fc-toolbar-chunk.legends .legend-box{display:inline-block;width:12px;height:12px;border-radius:3px;margin-right:4px}
+  .fc-toolbar-chunk.legends span{font-size:13px;font-weight:600;color:#374151}
+  .legend-box.status-planned{background:var(--blue)}
+  .legend-box.status-compleated{background:var(--cyan)}
+  .legend-box.status-cancelled{background:var(--red)}
 </style>
 </head>
 <body>
@@ -139,10 +125,18 @@
         <label>Title</label>
         <input id="fTitle" class="input" type="text" placeholder="e.g., Operational Safety">
       </div>
-      <div>
+
+      <!-- Multi-operator chips UI -->
+      <div class="row-full">
         <label>Operator(s)</label>
-        <input id="fOperator" class="input" type="text" placeholder="Operator name(s)">
+        <div class="row-inline">
+          <input id="opOne" class="input" type="text" placeholder="Type operator and press +">
+          <button class="btn ghost" id="addOpBtn" type="button">+</button>
+        </div>
+        <div id="opChips" class="chips"></div>
+        <div class="chips-hint">Add one operator at a time using “+”.</div>
       </div>
+
       <div>
         <label>Trainer Name</label>
         <input id="fTrainer" class="input" type="text" placeholder="Trainer name">
@@ -195,7 +189,7 @@
 
       <div class="row-full">
         <label>Recipient emails</label>
-        <div class="email-row">
+        <div class="row-inline">
           <input id="mailOne" class="input" type="email" placeholder="name@company.com">
           <button class="btn ghost" id="addMailBtn" type="button">+</button>
         </div>
@@ -235,6 +229,7 @@ function loading(t){ $("#loading").textContent = t || ""; }
 var state = {
   calendar:null, clickedDate:null, lastRange:null, selectedEvent:null, mode:"create",
   mailList: [],
+  operatorList: [],    // NEW: holds operators for chips UI
   filters: { op: "__ALL__", tr: "__ALL__", ma: "__ALL__" },
   lastEventsFull: []
 };
@@ -260,27 +255,15 @@ function colorByStatus(s){
 }
 function eventContent(arg){
   var p = arg.event.extendedProps;
-  
-  // Format Training_Start into full time like "09:00:00 AM"
+  // Format start time like "09:00 AM"
   var d = new Date(p.Training_Start);
-  var hours   = d.getHours();
-  var minutes = d.getMinutes();
-  var seconds = d.getSeconds();
-  var ampm    = hours >= 12 ? "PM" : "AM";
-  hours = hours % 12; 
-  hours = hours ? hours : 12; // 0 => 12
-  var time = 
-    String(hours).padStart(2,'0') + ":" +
-    String(minutes).padStart(2,'0') + "  " +ampm;
-    
-
+  var hours = d.getHours(), minutes = d.getMinutes();
+  var ampm = hours >= 12 ? "PM" : "AM";
+  hours = hours % 12; hours = hours ? hours : 12;
+  var time = String(hours).padStart(2,'0') + ":" + String(minutes).padStart(2,'0') + " " + ampm;
   var topic = p.Training_Topic || "Training";
-
-return { html:
-    '<span>'+time+'    –    '+escapeHtml(topic)+'</span>'
-  };
+  return { html: '<span>'+time+'  –  '+escapeHtml(topic)+'</span>' };
 }
-
 function isValidEmail(s){ return /^[^\s@]+@[^\s@]+\.[^\s@]+$/i.test(s || ""); }
 
 /************ READ ************/
@@ -333,14 +316,20 @@ function readRangeSessions(rangeStart, rangeEnd){
     });
 }
 
-/************ FILTERS ************/
+/************ FILTERS (support multi-operator per session) ************/
+function splitOps(value){
+  return String(value||"")
+    .split(",")
+    .map(s=>s.trim())
+    .filter(Boolean);
+}
 function populateFiltersFrom(events){
   var ops = new Set(), trs = new Set(), mas = new Set();
   events.forEach(ev=>{
     var p = ev.extendedProps||{};
-    if (p.Training_Operator_Name) ops.add(String(p.Training_Operator_Name));
-    if (p.Trainer_Name)          trs.add(String(p.Trainer_Name));
-    if (p.Training_Machine)      mas.add(String(p.Training_Machine));
+    splitOps(p.Training_Operator_Name).forEach(o=>ops.add(o));
+    if (p.Trainer_Name)     trs.add(String(p.Trainer_Name));
+    if (p.Training_Machine) mas.add(String(p.Training_Machine));
   });
   function fillSelect(sel, set){
     var el = $(sel);
@@ -356,7 +345,8 @@ function applyFiltersTo(events){
   state.filters = { op: op, tr: tr, ma: ma };
   return events.filter(ev=>{
     var p = ev.extendedProps||{};
-    var okOp = (op==="__ALL__" || String(p.Training_Operator_Name)===op);
+    var opList = splitOps(p.Training_Operator_Name);
+    var okOp = (op==="__ALL__" || opList.includes(op));
     var okTr = (tr==="__ALL__" || String(p.Trainer_Name)===tr);
     var okMa = (ma==="__ALL__" || String(p.Training_Machine)===ma);
     return okOp && okTr && okMa;
@@ -416,7 +406,7 @@ function writeAttributes(session, opts){
   var url = API_BASE + "/plugins/telemetry/DEVICE/" + DEVICE_ID + "/SERVER_SCOPE";
   var body = {
     Training_Title:         session.Training_Title,
-    Training_Operator_Name: session.Training_Operator_Name,
+    Training_Operator_Name: session.Training_Operator_Name, // comma-separated list
     Training_Start:         session.Training_Start,
     Training_End:           session.Training_End,
     Trainer_Name:           session.Trainer_Name,
@@ -471,7 +461,7 @@ function showDetails(ev){
       '<span>Status</span><span><span class="'+badgeCls+'" style="padding:2px 8px;border-radius:999px;color:#fff;">'+escapeHtml(p.Training_Status||"Planned")+'</span></span>'+
       '<span>Title</span><span>'+escapeHtml(p.Training_Title||"-")+'</span>'+
       '<span>Topic</span><span>'+escapeHtml(p.Training_Topic||"-")+'</span>'+
-      '<span>Operator</span><span>'+escapeHtml(p.Training_Operator_Name||"-")+'</span>'+
+      '<span>Operator(s)</span><span>'+escapeHtml(p.Training_Operator_Name||"-")+'</span>'+
       '<span>Trainer</span><span>'+escapeHtml(p.Trainer_Name||"-")+'</span>'+
       '<span>Machine</span><span>'+escapeHtml(p.Training_Machine||"-")+'</span>'+
       '<span>Start</span><span>'+fmt(p.Training_Start)+'</span>'+
@@ -490,6 +480,7 @@ function busy(on){
   $("#btnMail").disabled     = !!on;
   $("#sendMailBtn").disabled = !!on;
   $("#addMailBtn").disabled  = !!on && $("#addMailBtn");
+  $("#addOpBtn").disabled    = !!on && $("#addOpBtn");
 }
 $("#closeModal").addEventListener("click", function(){ overlay.style.display = "none"; });
 $("#closeMailModal").addEventListener("click", function(){ mailOverlay.style.display = "none"; });
@@ -499,6 +490,35 @@ $("#saveSession").addEventListener("click", function(){
   else onCreateSession();
 });
 
+/* ----- Operator chips logic ----- */
+function refreshOpChips(){
+  var box = $("#opChips"); box.innerHTML = "";
+  state.operatorList.forEach(function(name, idx){
+    var chip = document.createElement("span");
+    chip.className = "chip";
+    chip.innerHTML = '<span>'+escapeHtml(name)+'</span><button type="button" aria-label="Remove">✕</button>';
+    chip.querySelector("button").addEventListener("click", function(){
+      state.operatorList.splice(idx, 1); refreshOpChips();
+    });
+    box.appendChild(chip);
+  });
+}
+function addOneOperatorFromInput(){
+  var val = ($("#opOne").value || "").trim();
+  if (!val) return;
+  // prevent duplicates (case-insensitive)
+  var exists = state.operatorList.some(o => o.toLowerCase() === val.toLowerCase());
+  if (exists){ alert("Operator already added: "+val); return; }
+  state.operatorList.push(val);
+  $("#opOne").value = "";
+  refreshOpChips();
+}
+$("#addOpBtn").addEventListener("click", addOneOperatorFromInput);
+$("#opOne").addEventListener("keydown", function(e){
+  if (e.key === "Enter"){ e.preventDefault(); addOneOperatorFromInput(); }
+});
+
+/* ----- Edit / Cancel / Mail ----- */
 $("#btnEdit").addEventListener("click", function(){
   if (!state.selectedEvent) { alert("Select a session first."); return; }
   var p = state.selectedEvent.extendedProps;
@@ -509,15 +529,20 @@ $("#btnEdit").addEventListener("click", function(){
   var base = new Date(p.Training_Start);
   state.clickedDate = new Date(base.getFullYear(), base.getMonth(), base.getDate());
 
-  $("#fTitle").value    = p.Training_Title || "";
-  $("#fOperator").value = p.Training_Operator_Name || "";
-  $("#fTrainer").value  = p.Trainer_Name || "";
-  $("#fTopic").value    = p.Training_Topic || "";
-  $("#fMachine").value  = p.Training_Machine || "";
-  $("#fTimeTo").value   = msToHHMM(p.Training_Start);
-  $("#fTimeFrom").value = msToHHMM(p.Training_End);
-  $("#fStatus").value   = p.Training_Status || "Planned";
+  // Populate fields
+  $("#fTitle").value   = p.Training_Title || "";
+  $("#fTrainer").value = p.Trainer_Name || "";
+  $("#fTopic").value   = p.Training_Topic || "";
+  $("#fMachine").value = p.Training_Machine || "";
+  $("#fTimeTo").value  = msToHHMM(p.Training_Start);
+  $("#fTimeFrom").value= msToHHMM(p.Training_End);
+  $("#fStatus").value  = p.Training_Status || "Planned";
   $("#fDateHint").textContent = "Date: " + state.clickedDate.toDateString();
+
+  // Populate operator chips from comma-separated string
+  state.operatorList = splitOps(p.Training_Operator_Name);
+  refreshOpChips();
+  $("#opOne").value = "";
 
   overlay.style.display = "flex";
 });
@@ -579,7 +604,7 @@ $("#btnMail").addEventListener("click", function(){
   var fmt = v => v ? new Date(Number(v)).toLocaleString() : "-";
   var html =
     '<div><strong>Title:</strong> '   + escapeHtml(p.Training_Title||"-") + '</div>'+
-    '<div><strong>Operator:</strong> '+ escapeHtml(p.Training_Operator_Name||"-") + '</div>'+
+    '<div><strong>Operator(s):</strong> '+ escapeHtml(p.Training_Operator_Name||"-") + '</div>'+
     '<div><strong>Trainer:</strong> ' + escapeHtml(p.Trainer_Name||"-") + '</div>'+
     '<div><strong>Topic:</strong> '   + escapeHtml(p.Training_Topic||"-") + '</div>'+
     '<div><strong>Machine:</strong> ' + escapeHtml(p.Training_Machine||"-") + '</div>'+
@@ -621,10 +646,11 @@ function openModalForDate(jsDate){
   $("#modalTitle").textContent = "Add training session";
   $("#saveSession").textContent = "Save";
   $("#fDateHint").textContent = "Date: " + state.clickedDate.toDateString();
-  $("#fTitle").value=""; $("#fOperator").value=""; $("#fTrainer").value="";
-  $("#fTopic").value=""; $("#fMachine").value="";
+  $("#fTitle").value=""; $("#fTrainer").value=""; $("#fTopic").value=""; $("#fMachine").value="";
   $("#fTimeTo").value="09:00"; $("#fTimeFrom").value="11:00";
   $("#fStatus").value="Planned";
+  // reset operator chips
+  state.operatorList = []; refreshOpChips(); $("#opOne").value = "";
   overlay.style.display = "flex";
 }
 function onCreateSession(){
@@ -655,7 +681,8 @@ function onUpdateSession(){
         return String(p.Training_Title||"") === String(payload.Training_Title||"")
             && String(p.Training_Status||"") === String(payload.Training_Status||"")
             && Number(p.Training_Start||0)   === Number(payload.Training_Start||0)
-            && Number(p.Training_End||0)     === Number(payload.Training_End||0);
+            && Number(p.Training_End||0)     === Number(payload.Training_End||0)
+            && String(p.Training_Operator_Name||"") === String(payload.Training_Operator_Name||"");
       });
     })
     .catch(function(e){ console.error(e); alert(e.message||"Failed to update"); })
@@ -664,7 +691,7 @@ function onUpdateSession(){
 function collectFormPayload(base){
   return {
     Training_Title: $("#fTitle").value.trim(),
-    Training_Operator_Name: $("#fOperator").value.trim(),
+    Training_Operator_Name: state.operatorList.join(", "), // comma-separated
     Training_Start: mergeDateTime(base, $("#fTimeTo").value),
     Training_End:   mergeDateTime(base, $("#fTimeFrom").value),
     Trainer_Name: $("#fTrainer").value.trim(),
@@ -676,7 +703,7 @@ function collectFormPayload(base){
 function requiredChecks(p){
   var must = [
     ["Title", p.Training_Title],
-    ["Operator", p.Training_Operator_Name],
+    ["Operator(s)", p.Training_Operator_Name],
     ["Trainer Name", p.Trainer_Name],
     ["Training Topic", p.Training_Topic],
     ["Training Machine", p.Training_Machine]
@@ -730,18 +757,18 @@ function startCalendar(){
   state.calendar.render();
 
   // inject legends once calendar is rendered
-const toolbarCenter = calEl.querySelector(".fc-toolbar-chunk:nth-child(2)");
-if (toolbarCenter) {
-  const legends = document.createElement("div");
-  legends.className = "fc-toolbar-chunk legends";
-  legends.innerHTML = `
-    <span><span class="legend-box status-planned"></span> Planned</span>
-    <span><span class="legend-box status-compleated"></span> Completed</span>
-    <span><span class="legend-box status-cancelled"></span> Cancelled</span>
-  `;
-  toolbarCenter.appendChild(legends);
-}
-  /// for legends
+  const toolbarCenter = calEl.querySelector(".fc-toolbar-chunk:nth-child(2)");
+  if (toolbarCenter) {
+    const legends = document.createElement("div");
+    legends.className = "fc-toolbar-chunk legends";
+    legends.innerHTML = `
+      <span><span class="legend-box status-planned"></span> Planned</span>
+      <span><span class="legend-box status-compleated"></span> Completed</span>
+      <span><span class="legend-box status-cancelled"></span> Cancelled</span>
+    `;
+    toolbarCenter.appendChild(legends);
+  }
+
   loading("");
 }
 if (document.readyState === "complete" || document.readyState === "interactive") setTimeout(startCalendar,0);
