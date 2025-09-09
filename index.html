@@ -223,7 +223,7 @@ function loading(t){ $("#loading").textContent = t || ""; }
 var state = {
   calendar:null, clickedDate:null, lastRange:null, selectedEvent:null, mode:"create",
   mailList: [],
-  operatorList: [],         // NEW: operators chips state
+  operatorList: [],
   filters: { op: "__ALL__", tr: "__ALL__", ma: "__ALL__" },
   lastEventsFull: []
 };
@@ -315,7 +315,6 @@ function populateFiltersFrom(events){
   var ops = new Set(), trs = new Set(), mas = new Set();
   events.forEach(ev=>{
     var p = ev.extendedProps||{};
-    // split operators by comma into individual names
     String(p.Training_Operator_Name||"").split(",").forEach(x=>{
       var n = normName(x);
       if (n) ops.add(n);
@@ -337,7 +336,6 @@ function applyFiltersTo(events){
   state.filters = { op: op, tr: tr, ma: ma };
   return events.filter(ev=>{
     var p = ev.extendedProps||{};
-    // operator contains
     var opList = String(p.Training_Operator_Name||"").split(",").map(normName).filter(Boolean);
     var okOp = (op==="__ALL__" || opList.includes(normName(op)));
     var okTr = (tr==="__ALL__" || normName(p.Trainer_Name)===normName(tr));
@@ -361,6 +359,11 @@ $("#btnResetFilters").addEventListener("click", function(){
 });
 
 /************ AUTO-REFRESH (every 5s, 3 min max) ************/
+/* NEW: Supports three modes
+   1) expectedTs && no predicate  => stop when any row with __ts === expectedTs appears
+   2) expectedTs && predicate     => find row at expectedTs; pass that EVENT into predicate(foundEvent)
+   3) no expectedTs && predicate  => pass ALL events into predicate(allEvents)
+*/
 var _autoTimer = null, _autoDeadline = 0;
 function stopAutoRefresh(){ if (_autoTimer) { clearInterval(_autoTimer); _autoTimer = null; } }
 function startAutoRefresh(expectedTs, predicate){
@@ -369,6 +372,7 @@ function startAutoRefresh(expectedTs, predicate){
   _autoTimer = setInterval(function(){
     if (Date.now() > _autoDeadline) { stopAutoRefresh(); loading("Stopped: timeout waiting for telemetry update"); return; }
     if (!state.lastRange) return;
+
     readRangeSessions(state.lastRange.start, state.lastRange.end)
       .then(function(events){
         state.lastEventsFull = events.slice();
@@ -380,13 +384,21 @@ function startAutoRefresh(expectedTs, predicate){
         $("#sideActions").style.display="none";
         loading("Loaded "+filtered.length+" session(s) — auto-refreshing…");
 
-        var stop = false;
-        if (typeof predicate === "function"){
+        let stop = false;
+        if (predicate && expectedTs != null) {
+          // Mode 2: find by timestamp, then validate via predicate(foundEvent)
+          const found = events.find(ev => String(ev.extendedProps.__ts) === String(expectedTs));
+          if (found) {
+            try { stop = !!predicate(found); } catch(e){ stop = false; }
+          }
+        } else if (predicate && expectedTs == null) {
+          // Mode 3: predicate over all events
           try { stop = !!predicate(events); } catch(e){ stop = false; }
-        } else if (expectedTs != null){
-          var found = events.find(ev => String(ev.extendedProps.__ts) === String(expectedTs));
-          stop = !!found;
+        } else if (!predicate && expectedTs != null) {
+          // Mode 1: just wait for the row to appear
+          stop = events.some(ev => String(ev.extendedProps.__ts) === String(expectedTs));
         }
+
         if (stop){ stopAutoRefresh(); loading("Update detected ✓"); }
       })
       .catch(function(err){ console.error(err); loading("Auto-refresh error: "+(err.message||err)); });
@@ -539,7 +551,7 @@ $("#btnEdit").addEventListener("click", function(){
   $("#modalTitle").textContent = "Update training session";
   $("#saveSession").textContent = "Update";
 
-  // Pre-fill
+  // Pre-fill operators
   state.operatorList = String(p.Training_Operator_Name||"")
     .split(",").map(normName).filter(Boolean);
   refreshOperatorChips();
@@ -580,8 +592,9 @@ $("#btnCancel").addEventListener("click", function(){
   loading("Cancelling…"); busy(true);
   writeAttributes(payload, { mode: "cancel" })
     .then(function(){
-      startAutoRefresh(payload.Update_Timestamp, function(found){
-        return String(found.extendedProps.Training_Status).toLowerCase() === "cancelled";
+      // Mode 2: keyed to Update_Timestamp, predicate receives found event
+      startAutoRefresh(payload.Update_Timestamp, function(foundEvent){
+        return String(foundEvent.extendedProps.Training_Status).toLowerCase() === "cancelled";
       });
     })
     .catch(err => { console.error(err); alert(err.message||"Failed to cancel"); })
@@ -643,7 +656,7 @@ function openModalForDate(jsDate){
   $("#fTimeTo").value="09:00"; $("#fTimeFrom").value="11:00";
   $("#fStatus").value="Planned";
 
-  // reset operators chips
+  // reset operators
   state.operatorList = [];
   refreshOperatorChips();
   $("#opOne").value = "";
@@ -659,19 +672,8 @@ function onCreateSession(){
   writeAttributes(payload, { mode:"create" })
     .then(function(){
       overlay.style.display="none";
-      // Predicate-only polling for CREATE (match by fields)
-      startAutoRefresh(null, function(allEvents){
-        return allEvents.some(function(ev){
-          var p = ev.extendedProps || {};
-          return String(p.Training_Title||"")   === String(payload.Training_Title||"") &&
-                 String(p.Training_Status||"")  === String(payload.Training_Status||"") &&
-                 Number(p.Training_Start||0)    === Number(payload.Training_Start||0) &&
-                 Number(p.Training_End||0)      === Number(payload.Training_End||0) &&
-                 String(p.Training_Operator_Name||"") === String(payload.Training_Operator_Name||"") &&
-                 String(p.Training_Machine||"") === String(payload.Training_Machine||"") &&
-                 String(p.Trainer_Name||"")     === String(payload.Trainer_Name||"");
-        });
-      });
+      // Mode 1: keyed to Training_Start (no predicate)
+      startAutoRefresh(payload.Training_Start, null);
     })
     .catch(function(e){ console.error(e); alert(e.message||"Failed to save"); })
     .finally(function(){ busy(false); });
@@ -684,16 +686,18 @@ function onUpdateSession(){
   if (!baseTs) { alert("Missing base timestamp for update. Please reselect the event."); return; }
   payload.Update_Timestamp = baseTs;
   var must = requiredChecks(payload); if (must) { alert(must); return; }
+
   loading("Updating…"); busy(true);
   writeAttributes(payload, { mode:"update" })
     .then(function(){
       overlay.style.display="none";
-      startAutoRefresh(payload.Update_Timestamp, function(found){
-        var p = found.extendedProps || {};
-        return String(p.Training_Title||"") === String(payload.Training_Title||"")
-            && String(p.Training_Status||"") === String(payload.Training_Status||"")
-            && Number(p.Training_Start||0)   === Number(payload.Training_Start||0)
-            && Number(p.Training_End||0)     === Number(payload.Training_End||0)
+      // Mode 2: keyed to Update_Timestamp; predicate validates the found row fields
+      startAutoRefresh(payload.Update_Timestamp, function(foundEvent){
+        var p = foundEvent.extendedProps || {};
+        return String(p.Training_Title||"")   === String(payload.Training_Title||"")
+            && String(p.Training_Status||"")  === String(payload.Training_Status||"")
+            && Number(p.Training_Start||0)    === Number(payload.Training_Start||0)
+            && Number(p.Training_End||0)      === Number(payload.Training_End||0)
             && String(p.Training_Operator_Name||"") === String(payload.Training_Operator_Name||"")
             && String(p.Training_Machine||"") === String(payload.Training_Machine||"")
             && String(p.Trainer_Name||"")     === String(payload.Trainer_Name||"");
@@ -703,7 +707,7 @@ function onUpdateSession(){
     .finally(function(){ busy(false); });
 }
 function collectFormPayload(base){
-  // Store operators as a single normalized comma+space string
+  // Operators as normalized comma+space string
   var opStr = state.operatorList.map(normName).filter(Boolean).join(", ");
   return {
     Training_Title: $("#fTitle").value.trim(),
@@ -772,7 +776,7 @@ function startCalendar(){
   });
   state.calendar.render();
 
-  // inject legends once calendar is rendered
+  // Legends
   const toolbarCenter = calEl.querySelector(".fc-toolbar-chunk:nth-child(2)");
   if (toolbarCenter) {
     const legends = document.createElement("div");
