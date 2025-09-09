@@ -12,7 +12,6 @@
   *{box-sizing:border-box}
   body{margin:0;background:#fff;color:var(--text);font:14px/1.45 system-ui,-apple-system,Segoe UI,Roboto,Arial}
   .app{display:grid;grid-template-columns:1fr 320px;gap:16px;min-height:100vh;padding:16px}
-  /* Top status bar (no heading) */
   header{grid-column:1/-1;display:flex;gap:10px;align-items:center;border:1px solid var(--ring);border-radius:12px;background:#fff;padding:10px 12px}
   .spacer{flex:1}
   .btn,.input,textarea,select{border:1px solid var(--ring);border-radius:10px;background:#fff;padding:8px 10px}
@@ -30,7 +29,6 @@
   .kpi span:first-child{color:#64748b}
   .side-actions{display:flex;gap:8px;margin-top:12px;flex-wrap:wrap}
 
-  /* Filter bar */
   .filters{grid-column:1/-1;display:flex;align-items:center;gap:10px;border:1px solid var(--ring);border-radius:12px;background:#fff;padding:10px 12px}
   .filters label{font-size:12px;color:#64748b;margin-right:4px}
 
@@ -44,30 +42,28 @@
   .status-planned{background:var(--blue)}
   .status-compleated{background:var(--cyan)}
   .status-cancelled{background:var(--red)}
-  .sub{display:block;font-weight:600;opacity:.95}
-  .tiny{display:block;font-weight:600;opacity:.8;font-size:12px}
 
   .muted{color:#64748b}
   #loading{font-size:12px;color:#64748b;margin-left:8px}
 
   /* Modal base */
   .overlay{position:fixed;inset:0;background:rgba(15,23,42,.35);display:none;align-items:center;justify-content:center;z-index:50}
-  .modal{width:min(560px,92vw);background:#fff;border:1px solid var(--ring);border-radius:14px;box-shadow:0 24px 48px rgba(0,0,0,.18)}
+  .modal{width:min(600px,92vw);background:#fff;border:1px solid var(--ring);border-radius:14px;box-shadow:0 24px 48px rgba(0,0,0,.18)}
   .modal header{display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid var(--ring);padding:12px 14px;border-radius:14px 14px 0 0}
   .modal .body{padding:14px;display:grid;grid-template-columns:1fr 1fr;gap:10px}
   .modal .row-full{grid-column:1 / -1}
   .modal label{display:block;font-size:12px;color:#475569;font-weight:800;margin:0 0 6px}
   .modal footer{display:flex;gap:10px;justify-content:flex-end;border-top:1px solid var(--ring);padding:10px 14px;border-radius:0 0 14px 14px}
 
-  /* Mail modal */
-  .mail-details{border:1px dashed var(--ring);border-radius:10px;padding:10px;font-size:13px}
+  /* Chips (operators & mail) */
   .chips{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}
   .chip{display:inline-flex;align-items:center;gap:6px;padding:4px 8px;border:1px solid var(--ring);border-radius:999px;font-size:12px;background:#f8fafc}
   .chip button{border:0;background:transparent;cursor:pointer;font-weight:900;line-height:1}
-  .email-row{display:flex;gap:8px;align-items:center}
-  .email-row .input{flex:1}
+  .row-add{display:flex;gap:8px;align-items:center}
+  .row-add .input{flex:1}
   .chips-hint{font-size:12px;color:#64748b}
 
+  /* Legends */
   .fc-toolbar-chunk.legends { display:flex; gap:16px; align-items:right; margin-right:20px;}
   .fc-toolbar-chunk.legends .legend-box { display:inline-block; width:12px; height:12px; border-radius:3px; margin-right:4px;}
   .fc-toolbar-chunk.legends span { font-size:13px; font-weight:600; color:#374151;}
@@ -78,7 +74,6 @@
 </head>
 <body>
 <div class="app">
-  <!-- status bar (only the live counter on the right) -->
   <header>
     <div class="spacer"></div>
     <span id="loading"></span>
@@ -124,10 +119,18 @@
         <label>Title</label>
         <input id="fTitle" class="input" type="text" placeholder="e.g., Operational Safety">
       </div>
-      <div>
+
+      <!-- Operators (chips) -->
+      <div class="row-full">
         <label>Operator(s)</label>
-        <input id="fOperator" class="input" type="text" placeholder="Operator name(s)">
+        <div class="row-add">
+          <input id="opOne" class="input" type="text" placeholder="Add operator name">
+          <button class="btn ghost" id="addOpBtn" type="button">+</button>
+        </div>
+        <div id="opChips" class="chips"></div>
+        <div class="chips-hint">Add one operator at a time using “+”.</div>
       </div>
+
       <div>
         <label>Trainer Name</label>
         <input id="fTrainer" class="input" type="text" placeholder="Trainer name">
@@ -180,7 +183,7 @@
 
       <div class="row-full">
         <label>Recipient emails</label>
-        <div class="email-row">
+        <div class="row-add">
           <input id="mailOne" class="input" type="email" placeholder="name@company.com">
           <button class="btn ghost" id="addMailBtn" type="button">+</button>
         </div>
@@ -202,7 +205,7 @@ var API_BASE  = ORIGIN + "/api";
 var DEVICE_ID = "991cf500-661a-11f0-90f1-775fee303094";
 var JWT       = new URLSearchParams(location.search).get("token")  || "";
 
-// Flags (used by rule-chain, not shown in UI)
+// Flags (used by rule-chain)
 var ATTR_SAVE_FLAG    = "Save_Button";
 var ATTR_UPDATE_FLAG  = "Update_Buttton";
 var ATTR_SEND_MAIL    = "Send_Mail";
@@ -220,6 +223,7 @@ function loading(t){ $("#loading").textContent = t || ""; }
 var state = {
   calendar:null, clickedDate:null, lastRange:null, selectedEvent:null, mode:"create",
   mailList: [],
+  operatorList: [],         // NEW: operators chips state
   filters: { op: "__ALL__", tr: "__ALL__", ma: "__ALL__" },
   lastEventsFull: []
 };
@@ -254,6 +258,7 @@ function eventContent(arg){
   return { html: '<span>'+time+'    –    '+escapeHtml(topic)+'</span>' };
 }
 function isValidEmail(s){ return /^[^\s@]+@[^\s@]+\.[^\s@]+$/i.test(s || ""); }
+function normName(s){ return String(s||"").trim().replace(/\s+/g,' '); }
 
 /************ READ ************/
 function readRangeSessions(rangeStart, rangeEnd){
@@ -305,14 +310,18 @@ function readRangeSessions(rangeStart, rangeEnd){
     });
 }
 
-/************ FILTERS ************/
+/************ FILTERS (operator supports multi) ************/
 function populateFiltersFrom(events){
   var ops = new Set(), trs = new Set(), mas = new Set();
   events.forEach(ev=>{
     var p = ev.extendedProps||{};
-    if (p.Training_Operator_Name) ops.add(String(p.Training_Operator_Name));
-    if (p.Trainer_Name)          trs.add(String(p.Trainer_Name));
-    if (p.Training_Machine)      mas.add(String(p.Training_Machine));
+    // split operators by comma into individual names
+    String(p.Training_Operator_Name||"").split(",").forEach(x=>{
+      var n = normName(x);
+      if (n) ops.add(n);
+    });
+    if (p.Trainer_Name)     trs.add(normName(p.Trainer_Name));
+    if (p.Training_Machine) mas.add(normName(p.Training_Machine));
   });
   function fillSelect(sel, set){
     var el = $(sel);
@@ -328,9 +337,11 @@ function applyFiltersTo(events){
   state.filters = { op: op, tr: tr, ma: ma };
   return events.filter(ev=>{
     var p = ev.extendedProps||{};
-    var okOp = (op==="__ALL__" || String(p.Training_Operator_Name)===op);
-    var okTr = (tr==="__ALL__" || String(p.Trainer_Name)===tr);
-    var okMa = (ma==="__ALL__" || String(p.Training_Machine)===ma);
+    // operator contains
+    var opList = String(p.Training_Operator_Name||"").split(",").map(normName).filter(Boolean);
+    var okOp = (op==="__ALL__" || opList.includes(normName(op)));
+    var okTr = (tr==="__ALL__" || normName(p.Trainer_Name)===normName(tr));
+    var okMa = (ma==="__ALL__" || normName(p.Training_Machine)===normName(ma));
     return okOp && okTr && okMa;
   });
 }
@@ -350,7 +361,6 @@ $("#btnResetFilters").addEventListener("click", function(){
 });
 
 /************ AUTO-REFRESH (every 5s, 3 min max) ************/
-/* Enhanced: if expectedTs is null, we'll use the predicate against the WHOLE event list (useful for CREATE). */
 var _autoTimer = null, _autoDeadline = 0;
 function stopAutoRefresh(){ if (_autoTimer) { clearInterval(_autoTimer); _autoTimer = null; } }
 function startAutoRefresh(expectedTs, predicate){
@@ -372,10 +382,8 @@ function startAutoRefresh(expectedTs, predicate){
 
         var stop = false;
         if (typeof predicate === "function"){
-          /* CREATE path: expectedTs may be null; predicate decides based on fields. */
           try { stop = !!predicate(events); } catch(e){ stop = false; }
         } else if (expectedTs != null){
-          /* Legacy/UPDATE path by timestamp */
           var found = events.find(ev => String(ev.extendedProps.__ts) === String(expectedTs));
           stop = !!found;
         }
@@ -391,7 +399,7 @@ function writeAttributes(session, opts){
   var url = API_BASE + "/plugins/telemetry/DEVICE/" + DEVICE_ID + "/SERVER_SCOPE";
   var body = {
     Training_Title:         session.Training_Title,
-    Training_Operator_Name: session.Training_Operator_Name,
+    Training_Operator_Name: session.Training_Operator_Name, // comma+space list
     Training_Start:         session.Training_Start,
     Training_End:           session.Training_End,
     Trainer_Name:           session.Trainer_Name,
@@ -446,7 +454,7 @@ function showDetails(ev){
       '<span>Status</span><span><span class="'+badgeCls+'" style="padding:2px 8px;border-radius:999px;color:#fff;">'+escapeHtml(p.Training_Status||"Planned")+'</span></span>'+
       '<span>Title</span><span>'+escapeHtml(p.Training_Title||"-")+'</span>'+
       '<span>Topic</span><span>'+escapeHtml(p.Training_Topic||"-")+'</span>'+
-      '<span>Operator</span><span>'+escapeHtml(p.Training_Operator_Name||"-")+'</span>'+
+      '<span>Operator(s)</span><span>'+escapeHtml(p.Training_Operator_Name||"-")+'</span>'+
       '<span>Trainer</span><span>'+escapeHtml(p.Trainer_Name||"-")+'</span>'+
       '<span>Machine</span><span>'+escapeHtml(p.Training_Machine||"-")+'</span>'+
       '<span>Start</span><span>'+fmt(p.Training_Start)+'</span>'+
@@ -465,10 +473,60 @@ function busy(on){
   $("#btnMail").disabled     = !!on;
   $("#sendMailBtn").disabled = !!on;
   $("#addMailBtn").disabled  = !!on && $("#addMailBtn");
+  $("#addOpBtn").disabled    = !!on && $("#addOpBtn");
 }
 $("#closeModal").addEventListener("click", function(){ overlay.style.display = "none"; });
 $("#closeMailModal").addEventListener("click", function(){ mailOverlay.style.display = "none"; });
 
+/* Operator chips */
+function refreshOperatorChips(){
+  var box = $("#opChips"); box.innerHTML = "";
+  state.operatorList.forEach(function(name, idx){
+    var chip = document.createElement("span");
+    chip.className = "chip";
+    chip.innerHTML = '<span>'+escapeHtml(name)+'</span><button type="button" aria-label="Remove">✕</button>';
+    chip.querySelector("button").addEventListener("click", function(){
+      state.operatorList.splice(idx, 1); refreshOperatorChips();
+    });
+    box.appendChild(chip);
+  });
+}
+function addOneOperatorFromInput(){
+  var val = ($("#opOne").value || "").trim();
+  var name = normName(val);
+  if (!name) return;
+  if (state.operatorList.includes(name)) { alert("Already added: "+name); return; }
+  state.operatorList.push(name);
+  $("#opOne").value = "";
+  refreshOperatorChips();
+}
+$("#addOpBtn").addEventListener("click", addOneOperatorFromInput);
+$("#opOne").addEventListener("keydown", function(e){ if (e.key === "Enter"){ e.preventDefault(); addOneOperatorFromInput(); } });
+
+/* Mail chips */
+function refreshMailChips(){
+  var box = $("#mailChips"); box.innerHTML = "";
+  state.mailList.forEach(function(email, idx){
+    var chip = document.createElement("span");
+    chip.className = "chip";
+    chip.innerHTML = '<span>'+escapeHtml(email)+'</span><button type="button" aria-label="Remove">✕</button>';
+    chip.querySelector("button").addEventListener("click", function(){
+      state.mailList.splice(idx, 1); refreshMailChips();
+    });
+    box.appendChild(chip);
+  });
+}
+function addOneEmailFromInput(){
+  var val = ($("#mailOne").value || "").trim(); if (!val) return;
+  var email = val.toLowerCase();
+  if (!isValidEmail(email)) { alert("Invalid email: "+val); return; }
+  if (state.mailList.includes(email)) { alert("Already added: "+email); return; }
+  state.mailList.push(email); $("#mailOne").value = ""; refreshMailChips();
+}
+$("#addMailBtn").addEventListener("click", addOneEmailFromInput);
+$("#mailOne").addEventListener("keydown", function(e){ if (e.key === "Enter"){ e.preventDefault(); addOneEmailFromInput(); } });
+
+/* Buttons */
 $("#saveSession").addEventListener("click", function(){
   if (state.mode === "update") onUpdateSession();
   else onCreateSession();
@@ -481,11 +539,16 @@ $("#btnEdit").addEventListener("click", function(){
   $("#modalTitle").textContent = "Update training session";
   $("#saveSession").textContent = "Update";
 
+  // Pre-fill
+  state.operatorList = String(p.Training_Operator_Name||"")
+    .split(",").map(normName).filter(Boolean);
+  refreshOperatorChips();
+  $("#opOne").value = "";
+
   var base = new Date(p.Training_Start);
   state.clickedDate = new Date(base.getFullYear(), base.getMonth(), base.getDate());
 
   $("#fTitle").value    = p.Training_Title || "";
-  $("#fOperator").value = p.Training_Operator_Name || "";
   $("#fTrainer").value  = p.Trainer_Name || "";
   $("#fTopic").value    = p.Training_Topic || "";
   $("#fMachine").value  = p.Training_Machine || "";
@@ -525,36 +588,13 @@ $("#btnCancel").addEventListener("click", function(){
     .finally(()=>{ busy(false); });
 });
 
-/* Email chips */
-function refreshMailChips(){
-  var box = $("#mailChips"); box.innerHTML = "";
-  state.mailList.forEach(function(email, idx){
-    var chip = document.createElement("span");
-    chip.className = "chip";
-    chip.innerHTML = '<span>'+escapeHtml(email)+'</span><button type="button" aria-label="Remove">✕</button>';
-    chip.querySelector("button").addEventListener("click", function(){
-      state.mailList.splice(idx, 1); refreshMailChips();
-    });
-    box.appendChild(chip);
-  });
-}
-function addOneEmailFromInput(){
-  var val = ($("#mailOne").value || "").trim(); if (!val) return;
-  var email = val.toLowerCase();
-  if (!isValidEmail(email)) { alert("Invalid email: "+val); return; }
-  if (state.mailList.includes(email)) { alert("Already added: "+email); return; }
-  state.mailList.push(email); $("#mailOne").value = ""; refreshMailChips();
-}
-$("#addMailBtn").addEventListener("click", addOneEmailFromInput);
-$("#mailOne").addEventListener("keydown", function(e){ if (e.key === "Enter"){ e.preventDefault(); addOneEmailFromInput(); } });
-
 $("#btnMail").addEventListener("click", function(){
   if (!state.selectedEvent) { alert("Select a session first."); return; }
   var p = state.selectedEvent.extendedProps;
   var fmt = v => v ? new Date(Number(v)).toLocaleString() : "-";
   var html =
     '<div><strong>Title:</strong> '   + escapeHtml(p.Training_Title||"-") + '</div>'+
-    '<div><strong>Operator:</strong> '+ escapeHtml(p.Training_Operator_Name||"-") + '</div>'+
+    '<div><strong>Operator(s):</strong> '+ escapeHtml(p.Training_Operator_Name||"-") + '</div>'+
     '<div><strong>Trainer:</strong> ' + escapeHtml(p.Trainer_Name||"-") + '</div>'+
     '<div><strong>Topic:</strong> '   + escapeHtml(p.Training_Topic||"-") + '</div>'+
     '<div><strong>Machine:</strong> ' + escapeHtml(p.Training_Machine||"-") + '</div>'+
@@ -590,17 +630,24 @@ $("#sendMailBtn").addEventListener("click", function(){
 });
 
 /************ CREATE / UPDATE ************/
-/* CREATE now polls using a field-matching predicate (NOT base ts) */
 function openModalForDate(jsDate){
   state.mode = "create";
   state.clickedDate = new Date(jsDate.getFullYear(), jsDate.getMonth(), jsDate.getDate());
   $("#modalTitle").textContent = "Add training session";
   $("#saveSession").textContent = "Save";
   $("#fDateHint").textContent = "Date: " + state.clickedDate.toDateString();
-  $("#fTitle").value=""; $("#fOperator").value=""; $("#fTrainer").value="";
+
+  // reset form
+  $("#fTitle").value=""; $("#fTrainer").value="";
   $("#fTopic").value=""; $("#fMachine").value="";
   $("#fTimeTo").value="09:00"; $("#fTimeFrom").value="11:00";
   $("#fStatus").value="Planned";
+
+  // reset operators chips
+  state.operatorList = [];
+  refreshOperatorChips();
+  $("#opOne").value = "";
+
   overlay.style.display = "flex";
 }
 function onCreateSession(){
@@ -612,7 +659,7 @@ function onCreateSession(){
   writeAttributes(payload, { mode:"create" })
     .then(function(){
       overlay.style.display="none";
-      /* NEW: match by fields, not ts */
+      // Predicate-only polling for CREATE (match by fields)
       startAutoRefresh(null, function(allEvents){
         return allEvents.some(function(ev){
           var p = ev.extendedProps || {};
@@ -656,9 +703,11 @@ function onUpdateSession(){
     .finally(function(){ busy(false); });
 }
 function collectFormPayload(base){
+  // Store operators as a single normalized comma+space string
+  var opStr = state.operatorList.map(normName).filter(Boolean).join(", ");
   return {
     Training_Title: $("#fTitle").value.trim(),
-    Training_Operator_Name: $("#fOperator").value.trim(),
+    Training_Operator_Name: opStr,
     Training_Start: mergeDateTime(base, $("#fTimeTo").value),
     Training_End:   mergeDateTime(base, $("#fTimeFrom").value),
     Trainer_Name: $("#fTrainer").value.trim(),
@@ -670,7 +719,7 @@ function collectFormPayload(base){
 function requiredChecks(p){
   var must = [
     ["Title", p.Training_Title],
-    ["Operator", p.Training_Operator_Name],
+    ["At least one Operator", p.Training_Operator_Name && p.Training_Operator_Name.length>0],
     ["Trainer Name", p.Trainer_Name],
     ["Training Topic", p.Training_Topic],
     ["Training Machine", p.Training_Machine]
